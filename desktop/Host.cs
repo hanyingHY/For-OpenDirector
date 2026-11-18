@@ -46,9 +46,12 @@ internal static class Host {
                     using(var res=req.GetResponse()) using(var r=new StreamReader(res.GetResponseStream())) return r.ReadToEnd();
                 });
                 int renders=0;
-                var forms=new Form[Application.OpenForms.Count]; Application.OpenForms.CopyTo(forms,0);
+                var forms=new System.Collections.Generic.List<Form>(); foreach(Form f in Application.OpenForms) forms.Add(f);
                 foreach(Form f in forms) foreach(Control c in f.Controls) {
-                    var v=c as WebView2; if(v!=null && await v.ExecuteScriptAsync("!!document.querySelector('.cw-render-status progress,.cw-timeline-pending:not(:has(.cw-timeline-pending-error))')")=="true") renders++;
+                    var v=c as WebView2; if(v==null) continue;
+                    var inspect=v.ExecuteScriptAsync("!!document.querySelector('.cw-render-status progress,.cw-timeline-pending:not(:has(.cw-timeline-pending-error))')");
+                    if(await Task.WhenAny(inspect,Task.Delay(2500))!=inspect) throw new TimeoutException();
+                    if(await inspect=="true") renders++;
                 }
                 state+="; Export / 导出: "+renders;
             } catch(Exception) { state="Task status unknown / 无法确认任务状态"; }

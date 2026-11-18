@@ -22,6 +22,8 @@ try {
   await page.setViewportSize({width:1440,height:900});
   stage='open';
   const zh=phase==='create';
+  if(!zh) assert.equal(await page.evaluate(()=>localStorage.getItem('opendirector.smoke.upgrade')),'preserved','Lost renderer origin storage');
+  else await page.evaluate(()=>localStorage.setItem('opendirector.smoke.upgrade','preserved'));
   await page.evaluate(zh=>{localStorage.setItem('opendirector.modelSetup.v1','dismissed');localStorage.setItem('opendirector.locale.v1',zh?'zh-CN':'en-US');},zh);
   await page.reload();
   const saved=()=>page.locator('.cw-save-status').filter({hasText:zh?'已保存到本机':'Saved on this device'}).waitFor({state:'attached',timeout:60000});
@@ -34,6 +36,13 @@ try {
   const nodes=page.locator('.react-flow__node');
   const shell=join(app,'OpenDirector-CLI.exe');
   const projects=()=>JSON.parse(execFileSync(shell,['project','list'],{encoding:'utf8'})).projects;
+  async function assertLocked(project) {
+    const result=await page.evaluate(async id=>{
+      const r=await fetch(`/api/creation/projects/${id}/open-canvas`,{method:'POST',headers:{'X-OpenDirector-Request':'1','X-OpenDirector-Session':crypto.randomUUID(),'Accept-Language':document.documentElement.lang}});
+      return [r.status,await r.json()];
+    },project);
+    assert.equal(result[0],409);assert.equal(result[1].code,'project_open_elsewhere');
+  }
   if(zh) {
     stage='capture';
     const cdp=await context.newCDPSession(page), frames=[];
@@ -58,7 +67,7 @@ try {
     stage='export canvas';
     const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'导出画布',exact:true}).click()]);
     await download.saveAs('.work/export.canvas'); assert.equal(readFileSync('.work/export.canvas').subarray(0,2).toString(),'PK');
-    const project=projects().find(p=>p.name==='Blue Hour · 轨道晨光'); assert(project);
+    const project=projects().find(p=>p.name==='Blue Hour · 轨道晨光'); assert(project); await assertLocked(project.id);
     writeFileSync('.work/check.json',JSON.stringify({project:project.id,nodeId}));
     await delay(900); await cdp.send('Page.stopScreencast');
     assert(frames.length>1,'No captured WebView2 frames');
@@ -69,6 +78,7 @@ try {
     stage='verify project after reinstall';
     const {project,nodeId}=JSON.parse(readFileSync('.work/check.json'));
     await page.locator(`.react-flow__node[data-id="${nodeId}"] img.cw-image-preview`).waitFor();
+    await assertLocked(project);
     assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
     await page.screenshot({path:'delivery/windows-reopened-en.png'});
     if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }

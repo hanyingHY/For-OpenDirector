@@ -16,6 +16,14 @@ $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19222'
 npm install --prefix scripts --no-save --no-package-lock playwright-core@1.56.1
 if ($LASTEXITCODE) { throw 'Smoke driver setup failed' }
 function Test-UI($phase) {
+    $modern=(Get-Content "$root\app\VERSION").Trim() -eq '0.1.4-desktop.4'
+    $occupied=$null
+    if ($modern) {
+        # This used to prevent OpenDirector from starting. Never accept a
+        # connection: a successful GUI proves it reached the new listener.
+        $occupied=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,48765)
+        $occupied.Start()
+    }
     $hostPath=$env:PATH
     try {
         $env:PATH="$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
@@ -24,7 +32,21 @@ function Test-UI($phase) {
     try {
         node scripts/smoke.mjs $phase
         if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
+        if ($modern) {
+            $proc.Refresh()
+            if (!$proc.CloseMainWindow()) { throw 'Could not request window close' }
+            Start-Sleep -Milliseconds 800
+            $proc.Refresh()
+            if ($proc.HasExited -or $proc.MainWindowHandle -ne 0) { throw 'Close must hide, not exit' }
+            $second=Start-Process "$root\app\OpenDirector.exe" -PassThru
+            if (!$second.WaitForExit(5000) -or $second.ExitCode -ne 0) { throw 'Second launch did not hand off' }
+            $until=[DateTime]::UtcNow.AddSeconds(5)
+            do { $proc.Refresh(); if ($proc.MainWindowHandle -ne 0) { break }; Start-Sleep -Milliseconds 100 } while ([DateTime]::UtcNow -lt $until)
+            if ($proc.MainWindowHandle -eq 0) { throw 'Second launch did not restore window' }
+            Write-Output 'PASS: occupied legacy port, authenticated desktop, hide and single-instance restore'
+        }
     } finally {
+        if ($occupied) { $occupied.Stop() }
         if (!$proc.HasExited) { $proc.Kill(); $proc.WaitForExit() }
     }
 }

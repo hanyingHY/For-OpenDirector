@@ -1,4 +1,6 @@
 """Transport-only checks; the Windows workflows cover the actual PE and GUI."""
+import hashlib
+import hmac
 import unittest
 from desktop.service import DesktopSession, HOST, ORIGIN
 
@@ -32,6 +34,19 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_authenticated_same_origin(self):
         await self.dispatch(host=HOST, origin=ORIGIN, **{'x-opendirector-desktop': 'secret'})
+        self.assertEqual(self.calls, ['http'])
+
+    async def test_dynamic_host_and_non_reusable_probe(self):
+        self.session = DesktopSession(self.session.app, b'secret', 53122)
+        nonce = 'a' * 32
+        scope = {'type': 'http', 'path': '/__desktop/probe/'+nonce, 'headers': [(b'host', b'127.0.0.1:53122')]}
+        await self.session(scope, None, self.send)
+        proof = self.responses[-1]['body']
+        self.assertEqual(proof.decode(), hmac.new(b'secret', nonce.encode(), hashlib.sha256).hexdigest())
+        self.responses.clear()
+        await self.dispatch(host='127.0.0.1:53122', **{'x-opendirector-desktop': proof.decode()})
+        self.assertEqual(self.responses[0]['status'], 403)
+        await self.dispatch(host='127.0.0.1:53122', **{'x-opendirector-desktop': 'secret'})
         self.assertEqual(self.calls, ['http'])
 
     async def test_lifespan_is_owned_by_upstream(self):

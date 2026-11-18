@@ -1,4 +1,4 @@
-name: Diagnose installed Windows UX (no release access)
+name: Diagnose installed Windows UX (window restore)
 on:
   push:
     paths: ['.github/workflows/rehearse.yml']

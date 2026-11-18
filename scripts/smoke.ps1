@@ -50,8 +50,14 @@ function Test-UI($phase) {
             $second=Start-Process "$root\app\OpenDirector.exe" -PassThru
             if (!$second.WaitForExit(5000) -or $second.ExitCode -ne 0) { throw 'Second launch did not hand off' }
             $until=[DateTime]::UtcNow.AddSeconds(5)
-            while (![DesktopProbe]::IsWindowVisible($window) -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
-            if (![DesktopProbe]::IsWindowVisible($window)) { throw 'Second launch did not restore original HWND' }
+            # WinForms may recreate the native handle on Show. Identity is the
+            # same live process + its visible OpenDirector main form, not HWND equality.
+            do {
+                $proc.Refresh(); $restored=$proc.MainWindowHandle
+                if ($proc.MainWindowTitle -eq 'OpenDirector' -and [DesktopProbe]::IsWindowVisible($restored)) { break }
+                Start-Sleep -Milliseconds 100
+            } while ([DateTime]::UtcNow -lt $until)
+            if (![DesktopProbe]::IsWindowVisible($restored) -or $proc.MainWindowTitle -ne 'OpenDirector') { throw "Second launch failed to restore window; original=$window current=$restored title=$($proc.MainWindowTitle) exited=$($proc.HasExited)" }
             $before=(Get-FileHash "$root\app\OpenDirector.exe").Hash
             $blocked=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
             if (!$blocked.ExitCode -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or $proc.HasExited) { throw 'Live install was not refused safely' }

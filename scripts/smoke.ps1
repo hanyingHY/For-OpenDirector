@@ -6,6 +6,25 @@ $tempRoot=[IO.Path]::GetTempPath()
 $env:OPENDIRECTOR_ROOT = Join-Path $tempRoot 'OpenDirector 测试 projects'
 function Run-Installer($package=$installer) { if ((Start-Process $package -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) { throw 'Silent installation failed' } }
 if ($env:OD_PREVIOUS_INSTALLER) { Run-Installer $env:OD_PREVIOUS_INSTALLER } else { Run-Installer }
+if ($env:OD_AGENT_DIAGNOSTIC -eq '1') {
+    # Disposable, non-release probe only. Report coroutine locations, never values.
+    $probe=@'
+                    async def stacks():
+                        while True:
+                            await asyncio.sleep(12)
+                            with open(os.path.join(os.environ['TEMP'],'od-task-locations.txt'),'w') as f:
+                                for task in asyncio.all_tasks():
+                                    coro=task.get_coro(); names=[]
+                                    while coro and hasattr(coro,'cr_code'):
+                                        names.append(coro.cr_code.co_name+':'+str(coro.cr_frame.f_lineno if coro.cr_frame else '-'))
+                                        coro=coro.cr_await
+                                    print(' -> '.join(names),file=f)
+                    asyncio.create_task(stacks())
+'@
+    $service="$root\app\service.py"
+    $text=[IO.File]::ReadAllText($service).Replace("                    print(f'OD-DESKTOP-READY",$probe+"`n                    print(f'OD-DESKTOP-READY")
+    [IO.File]::WriteAllText($service,$text)
+}
 New-Item -ItemType Directory -Force .work | Out-Null
 # Seed a dummy model through the real store, never a user key. Compare exact
 # bytes across upgrade + uninstall, outside the installed resources.

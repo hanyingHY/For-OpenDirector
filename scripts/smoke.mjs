@@ -1,30 +1,74 @@
-// Drive the installed native WebView2, not a separately launched browser.
+// Exercise the installed WebView2 process. CDP is enabled by the CI parent only.
 import { chromium } from 'playwright-core';
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync} from 'node:fs';
-const phase=process.argv[2];
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { resolve, join } from 'node:path';
+const phase = process.argv[2];
+const app = join(process.env.LOCALAPPDATA,'Programs','OpenDirector','app');
+const delay = ms => new Promise(r=>setTimeout(r,ms));
+let page, stage='attach';
 try {
   let browser;
   for(let i=0;i<75&&!browser;i++) {
     try { browser=await chromium.connectOverCDP('http://127.0.0.1:19222',{timeout:1200}); }
-    catch { await new Promise(r=>setTimeout(r,1000)); }
+    catch { await delay(1000); }
   }
   assert(browser,'Installed WebView2 did not open');
   const context=browser.contexts()[0];
-  const page=context.pages()[0] || await context.waitForEvent('page');
+  page=context.pages()[0] || await context.waitForEvent('page');
   await page.waitForURL('http://127.0.0.1:48765/**',{timeout:60000});
-  await page.evaluate(()=>{localStorage.setItem('opendirector.modelSetup.v1','dismissed');localStorage.setItem('opendirector.locale.v1','zh-CN');});
+  await page.setViewportSize({width:1440,height:900});
+  stage='open';
+  const zh=phase==='create';
+  await page.evaluate(zh=>{localStorage.setItem('opendirector.modelSetup.v1','dismissed');localStorage.setItem('opendirector.locale.v1',zh?'zh-CN':'en-US');},zh);
   await page.reload();
-  await page.getByText('已保存到本机',{exact:true}).waitFor();
+  const saved=()=>page.locator('.cw-save-status').filter({hasText:zh?'已保存到本机':'Saved on this device'}).waitFor({state:'attached',timeout:60000});
+  await saved();
   assert.equal((await fetch('http://127.0.0.1:48765/api/health',{headers:{'X-OpenDirector-Request':'1'}})).status,403);
   const nodes=page.locator('.react-flow__node');
-  if(phase==='create') {
+  const shell=join(app,'OpenDirector-CLI.exe');
+  const projects=()=>JSON.parse(execFileSync(shell,['project','list'],{encoding:'utf8'})).projects;
+  if(zh) {
+    stage='capture';
+    const cdp=await context.newCDPSession(page), frames=[];
+    const folder=resolve('.work/frames'); mkdirSync(folder,{recursive:true});
+    cdp.on('Page.screencastFrame',event=>{const f=join(folder,`${frames.length}.jpg`);writeFileSync(f,Buffer.from(event.data,'base64'));frames.push([f,Date.now()]);cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{});});
+    await cdp.send('Page.startScreencast',{format:'jpeg',quality:85,maxWidth:1440,maxHeight:900});
+    stage='create project';
+    await page.getByRole('button',{name:'切换项目',exact:true}).click();
+    await page.getByRole('menuitem',{name:'新建画布项目',exact:true}).click();
+    const title=page.getByRole('textbox',{name:'项目名称',exact:true});
+    await title.fill('Blue Hour · 轨道晨光'); await title.press('Enter'); await saved();
+    stage='import image';
+    await page.getByLabel('选择本地素材文件',{exact:true}).setInputFiles('examples/01-orbit.jpg');
+    await page.locator('img.cw-image-preview').first().waitFor(); await saved();
+    const nodeId=await nodes.first().getAttribute('data-id');
+    await delay(900); await page.screenshot({path:'delivery/windows-canvas.png'});
+    stage='edit video prompt';
     await page.getByRole('button',{name:'添加视频',exact:true}).click();
-    await nodes.first().waitFor();
-    await page.getByText('已保存到本机',{exact:true}).waitFor();
-    writeFileSync('.work/item.txt',await nodes.first().getAttribute('data-id'));
-  } else { await nodes.first().waitFor(); assert.equal(await nodes.first().getAttribute('data-id'),readFileSync('.work/item.txt','utf8')); }
-  await page.screenshot({path:`delivery/windows-${phase}.png`});
-  // Removing the host in the caller must also remove its entire service job.
+    const prompt=page.getByRole('textbox',{name:'生成提示词',exact:true});
+    await prompt.click(); await page.keyboard.insertText('镜头缓慢推近，晨光沿着行星的边缘升起。');
+    await page.locator('.cw-workspace').focus(); await saved(); await delay(1000);
+    stage='export canvas';
+    const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'导出画布',exact:true}).click()]);
+    await download.saveAs('.work/export.canvas'); assert.equal(readFileSync('.work/export.canvas').subarray(0,2).toString(),'PK');
+    const project=projects().find(p=>p.name==='Blue Hour · 轨道晨光'); assert(project);
+    writeFileSync('.work/check.json',JSON.stringify({project:project.id,nodeId}));
+    await delay(900); await cdp.send('Page.stopScreencast');
+    assert(frames.length>1,'No captured WebView2 frames');
+    const list=frames.map(([f,t],i)=>`file '${f.replaceAll('\\','/')}'\nduration ${Math.min(2,((frames[i+1]?.[1]??(t+1200))-t)/1000)}`).join('\n')+`\nfile '${frames.at(-1)[0].replaceAll('\\','/')}'\n`;
+    writeFileSync(join(folder,'frames.txt'),list);
+    execFileSync(join(app,'media/ffmpeg.exe'),['-loglevel','error','-y','-safe','0','-f','concat','-i',join(folder,'frames.txt'),'-vf','scale=1440:900,fps=24,format=yuv420p','-c:v','libx264','-movflags','+faststart','delivery/windows-demo.mp4']);
+  } else {
+    stage='verify project after reinstall';
+    const {project,nodeId}=JSON.parse(readFileSync('.work/check.json'));
+    await page.locator(`.react-flow__node[data-id="${nodeId}"] img.cw-image-preview`).waitFor();
+    assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
+    await page.screenshot({path:'delivery/windows-reopened-en.png'});
+  }
   process.exit(0);
-} catch(e) { console.error('::error::'+String(e).replaceAll('\n',' ')); process.exit(1); }
+} catch(e) {
+  if(page) { try { await page.screenshot({path:'delivery/windows-diagnostic.png',timeout:4000}); } catch {} }
+  console.error('::error::'+phase+'/'+stage+': '+String(e).replaceAll('\n',' '));process.exit(1);
+}

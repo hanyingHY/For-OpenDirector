@@ -1,21 +1,25 @@
 name: Windows x64 desktop
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    paths: ["desktop/**", "scripts/**", "examples/**", ".github/workflows/windows.yml"]
 permissions:
   contents: read
 jobs:
   package:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: '24.22.1'
       - name: Assemble original UI, services and Windows runtime
         run: python scripts/package.py
       - name: Compile installer
+        id: package
         run: '& "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /INPUTCHARSET UTF8 desktop\setup.nsi; exit $LASTEXITCODE'
       - uses: actions/upload-artifact@v4
         with:
@@ -23,8 +27,16 @@ jobs:
           path: delivery/*.exe
           compression-level: 0
       - name: Exercise installed application
+        timeout-minutes: 10
         run: ./scripts/smoke.ps1
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
-          name: Windows-native-screenshots
-          path: delivery/*.png
+          name: Windows-native-evidence
+          path: |
+            delivery/*.png
+            delivery/windows-demo.mp4
+      - name: Native Agent round trip (local model fixture)
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
+        timeout-minutes: 5
+        run: ./scripts/agent-check.ps1

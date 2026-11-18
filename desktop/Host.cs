@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
-using System.Net;
+
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Microsoft.Web.WebView2.Core;
@@ -19,6 +19,8 @@ internal static class Host {
     static readonly string Log = Path.Combine(State, "desktop.log");
     static readonly object LogLock = new object();
     static readonly string Secret = NewSecret();
+    static readonly TaskCompletionSource<bool> Ready = new TaskCompletionSource<bool>();
+    static readonly string Ticket = Path.Combine(State,"session.bin");
     static Process service;
     static IntPtr job;
     static bool closing;
@@ -43,27 +45,15 @@ internal static class Host {
         var info = new ProcessStartInfo(Path.Combine(Install, "python", "python.exe"), "-I -X utf8 -u \"" + Path.Combine(Install, "service.py") + "\"");
         info.WorkingDirectory = State; info.UseShellExecute = false; info.CreateNoWindow = true;
         info.RedirectStandardInput = info.RedirectStandardOutput = info.RedirectStandardError = true;
-        info.EnvironmentVariables["PATH"] = Path.Combine(Install,"media") + ";" + info.EnvironmentVariables["PATH"];
+        info.EnvironmentVariables["PATH"] = Path.Combine(Install,"media") + ";" + Path.Combine(Install,"git","cmd") + ";" + info.EnvironmentVariables["PATH"];
         info.EnvironmentVariables["PYTHONUTF8"] = "1";
         info.EnvironmentVariables["OPENDIRECTOR_API_URL"] = Origin;
         service = new Process { StartInfo = info };
         service.ErrorDataReceived += (s,e) => { if(e.Data!=null) Write(e.Data); };
-        service.OutputDataReceived += (s,e) => { if(e.Data!=null) Write(e.Data); };
+        service.OutputDataReceived += (s,e) => { if(e.Data=="OD-DESKTOP-READY") Ready.TrySetResult(true); else if(e.Data==null) Ready.TrySetResult(false); else Write(e.Data); };
         service.Start();
         if (!AssignProcessToJobObject(job, service.Handle)) { service.Kill(); throw new System.ComponentModel.Win32Exception(); }
         service.BeginErrorReadLine(); service.BeginOutputReadLine(); service.StandardInput.WriteLine(Secret); service.StandardInput.Flush();
-    }
-    static bool Ready() {
-        var until = Stopwatch.StartNew();
-        while (until.Elapsed.TotalSeconds < 60 && !closing) {
-            if (service.HasExited) return false;
-            var r = (HttpWebRequest)WebRequest.Create(Origin + "/api/health"); r.Proxy = null; r.Timeout = 750;
-            r.Headers["X-OpenDirector-Request"] = "1"; r.Headers["X-OpenDirector-Desktop"] = Secret;
-            try { using(var res = (HttpWebResponse)r.GetResponse()) if(res.StatusCode == HttpStatusCode.OK) return true; }
-            catch(WebException e) { if(e.Response != null) e.Response.Close(); }
-            Thread.Sleep(150);
-        }
-        return false;
     }
     static bool Local(string address) { Uri uri; return Uri.TryCreate(address,UriKind.Absolute,out uri) && uri.GetLeftPart(UriPartial.Authority) == Origin; }
     static Form Window() {
@@ -102,7 +92,8 @@ internal static class Host {
                 main=Window(); main.Controls.Add(new Label { Text="OpenDirector   ·   Starting / 正在启动…", ForeColor=Color.White, Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleCenter });
                 main.Shown += async (s,e) => { try {
                     StartService();
-                    if(!await Task.Run((Func<bool>)Ready)) throw new Exception("Local service did not start. Check port 48765 and the log. / 服务启动失败，请检查 48765 端口和日志。");
+                    if(await Task.WhenAny(Ready.Task,Task.Delay(60000))!=Ready.Task || !await Ready.Task) throw new Exception("Local service did not start. Check port 48765 and the log. / 服务启动失败，请检查 48765 端口和日志。");
+                    File.WriteAllBytes(Ticket, ProtectedData.Protect(System.Text.Encoding.ASCII.GetBytes(Secret),null,DataProtectionScope.CurrentUser));
                     service.Exited += (p,a) => { if(!closing && main.IsHandleCreated) main.BeginInvoke((Action)(() => Fail(new Exception("Service exited. Restart OpenDirector. / 服务已退出，请重启应用。")))); };
                     service.EnableRaisingEvents=true;
                     engine=await CoreWebView2Environment.CreateAsync(null, Path.Combine(State,"WebView2"));
@@ -115,7 +106,7 @@ internal static class Host {
                 };
                 Application.Run(main);
             } catch(Exception e) { Error(e); }
-            finally { closing=true; try { if(service!=null && !service.HasExited) { service.StandardInput.Close(); service.WaitForExit(5000); } } catch(InvalidOperationException) {} finally { if(job!=IntPtr.Zero) CloseHandle(job); } }
+            finally { closing=true; try { if(service!=null && !service.HasExited) { service.StandardInput.Close(); service.WaitForExit(5000); } } catch(InvalidOperationException) {} finally { if(job!=IntPtr.Zero) CloseHandle(job); try { File.Delete(Ticket); } catch(IOException) {} } }
         }
     }
 }

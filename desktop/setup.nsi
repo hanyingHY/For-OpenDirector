@@ -38,6 +38,8 @@ Section
   SetRegView 64
   ; Stage completely before exchanging directories: a failed extraction leaves
   ; the installed app and the user workspace untouched.
+  RMDir /r "$INSTDIR\incoming"
+  ClearErrors
   SetOutPath "$INSTDIR\incoming"
   File /r "..\.work\app\*"
   IfErrors failed
@@ -58,6 +60,7 @@ activate:
   WriteRegStr HKCU "${ARP}" "DisplayVersion" "0.1.4-desktop.1"
   WriteRegStr HKCU "${ARP}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe" "" "$INSTDIR\app\OpenDirector.exe"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe" "" "$INSTDIR\app\OpenDirector-CLI.exe"
   RMDir /r "$INSTDIR\previous"
   Goto done
 rollback:
@@ -71,6 +74,7 @@ Section "Uninstall"
   SetRegView 64
   Delete "$SMPROGRAMS\OpenDirector.lnk"
   Delete "$DESKTOP\OpenDirector.lnk"
+  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe"
   DeleteRegKey HKCU "${ARP}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe"
   RMDir /r "$INSTDIR\app"

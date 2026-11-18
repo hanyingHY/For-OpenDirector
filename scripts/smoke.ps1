@@ -1,7 +1,8 @@
 $ErrorActionPreference='Stop'
 $installer = (Get-ChildItem delivery/*.exe).FullName
 $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
-$env:OPENDIRECTOR_ROOT = Join-Path $env:RUNNER_TEMP 'OpenDirector 测试 projects'
+$tempRoot=[IO.Path]::GetTempPath()
+$env:OPENDIRECTOR_ROOT = Join-Path $tempRoot 'OpenDirector 测试 projects'
 function Run-Installer { if ((Start-Process $installer -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) { throw 'Silent installation failed' } }
 Run-Installer
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19222'
@@ -11,7 +12,7 @@ function Test-UI($phase) {
     $proc=Start-Process "$root\app\OpenDirector.exe" -PassThru
     try {
         node scripts/smoke.mjs $phase
-        if ($LASTEXITCODE) { throw "UI probe failed: $phase" }
+        if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
     } finally {
         if (!$proc.HasExited) { $proc.Kill(); $proc.WaitForExit() }
     }
@@ -19,6 +20,8 @@ function Test-UI($phase) {
 Test-UI 'create'
 # Simulate an interrupted host, then reinstall without deleting projects.
 Run-Installer
+# Upstream intentionally retains the last writer's lease for 60s on crash.
+Start-Sleep -Seconds 61
 Test-UI 'reopen'
 $projectFiles=@(Get-ChildItem $env:OPENDIRECTOR_ROOT -File -Recurse)
 if (!$projectFiles.Count) { throw 'No project files to preserve' }

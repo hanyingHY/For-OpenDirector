@@ -36,7 +36,13 @@ def main():
     with socket.socket() as listener:
         if os.name == 'nt': listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
         listener.bind(('127.0.0.1', PORT))
-        server = uvicorn.Server(uvicorn.Config(DesktopSession(create_app(), token), log_level='warning', access_log=False, proxy_headers=False))
+        class Service(uvicorn.Server):
+            async def startup(self, sockets=None):
+                await super().startup(sockets=sockets)
+                if self.started:
+                    print('OD-DESKTOP-READY', flush=True)
+
+        server = Service(uvicorn.Config(DesktopSession(create_app(), token), log_level='warning', access_log=False, proxy_headers=False))
         def stop():
             sys.stdin.buffer.readline()  # shutdown message or host pipe closed
             server.should_exit = True

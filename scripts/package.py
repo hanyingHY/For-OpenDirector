@@ -57,6 +57,11 @@ def build():
     site = runtime / 'Lib/site-packages'
     core = site / 'opendirector'
     shutil.copytree(src / 'packages/core/src/opendirector', core)
+    launcher = core/'agent/cli_transport.py'
+    original = launcher.read_text(encoding='utf8')
+    old = "(cli_bin / 'opendirector.cmd').write_text(f'@\"{sys.executable}\" -m opendirector.cli %*\\n')"
+    if original.count(old) != 1: raise ValueError('Unexpected upstream Windows CLI launcher')
+    launcher.write_text(original.replace(old, "env['OD_AGENT_PYTHON'] = sys.executable\n        (cli_bin / 'opendirector.cmd').write_text('@\"%OD_AGENT_PYTHON%\" -m opendirector.cli %*\\n', encoding='ascii')"),encoding='utf8')
     shutil.copytree(src / 'apps/api/src/opendirector_api', site / 'opendirector_api')
     bundle = core / '_bundled'
     shutil.copytree(src / 'dist', bundle / 'web')
@@ -82,6 +87,9 @@ def build():
             target = APP/'media'/Path(name).name
             target.parent.mkdir(exist_ok=True)
             with z.open(entry) as f, target.open('wb') as out: shutil.copyfileobj(f, out)
+    with zipfile.ZipFile(download('https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/MinGit-2.56.1-64-bit.zip', 'mingit.zip',
+                    '4a92850b6e917da4fd010669b614b55dccf5b0ec333a534cc4be4700dfefdafd')) as z:
+        z.extractall(APP/'git')
     with zipfile.ZipFile(download(f'https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/{WV}/microsoft.web.webview2.{WV}.nupkg','webview2.nupkg')) as z:
         for name in ('lib/net462/Microsoft.Web.WebView2.Core.dll','lib/net462/Microsoft.Web.WebView2.WinForms.dll',
                      'runtimes/win-x64/native/WebView2Loader.dll','LICENSE.txt'):
@@ -90,13 +98,14 @@ def build():
             if not entry: raise RuntimeError('Missing '+name+': '+str([x for x in z.namelist() if x.endswith('.dll') or 'license' in x.lower()][:40]))
             target.write_bytes(z.read(entry))
     shutil.copy2(ROOT/'desktop/service.py', APP)
-    shutil.copy2(ROOT/'desktop/opendirector.cmd', APP)
+    shutil.copy2(ROOT/'desktop/cli_entry.py', APP)
     for name in ('LICENSE', 'NOTICE', 'package-lock.json'): shutil.copy2(src/name, APP/name)
     csc = Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     result = subprocess.run([csc, '/nologo','/target:winexe','/platform:x64','/codepage:65001', '/out:OpenDirector.exe',
-                    '/r:System.Windows.Forms.dll','/r:System.Drawing.dll', '/r:Microsoft.Web.WebView2.Core.dll',
+                    '/r:System.Security.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll', '/r:Microsoft.Web.WebView2.Core.dll',
                     '/r:Microsoft.Web.WebView2.WinForms.dll', ROOT/'desktop/Host.cs'], cwd=APP, capture_output=True, text=True)
     if result.returncode: raise RuntimeError(result.stdout + result.stderr)
+    subprocess.run([csc,'/nologo','/target:exe','/platform:x64','/codepage:65001','/out:OpenDirector-CLI.exe','/r:System.Security.dll',ROOT/'desktop/Cli.cs'],cwd=APP,check=True)
     subprocess.run([python,'-I','-c','from opendirector_api.main import create_app; from opendirector.installation import web_root; assert (web_root()/"index.html").is_file()'], check=True)
     subprocess.run([bundle/'bin/opencode.exe','--version'], check=True)
     subprocess.run([APP/'media/ffprobe.exe','-version'], check=True)

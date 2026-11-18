@@ -36,7 +36,7 @@ internal static class Host {
     [DllImport("user32.dll")] static extern bool AllowSetForegroundWindow(int pid);
     static async Task<bool> Confirm(string operation) {
         if(confirming || closing) return false;
-        confirming=true;
+        Restore(); confirming=true;
         try {
             string state;
             try {
@@ -145,8 +145,11 @@ internal static class Host {
                 Directory.CreateDirectory(State);
                 if(File.Exists(Log) && new FileInfo(Log).Length>2000000) { File.Copy(Log,Log+".old",true); File.Delete(Log); }
                 main=Window(); main.Controls.Add(new Label { Text="OpenDirector   ·   Starting / 正在启动…", ForeColor=Color.White, Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleCenter });
-                var handle=main.Handle;
-                var wait=ThreadPool.RegisterWaitForSingleObject(activation,(o,t)=>{ if(!closing && main.IsHandleCreated) main.BeginInvoke((Action)Restore); },null,-1,false);
+                // WinForms may destroy a hidden form's HWND. Consume the
+                // activation event on the UI thread, independently of that HWND.
+                var wake=new System.Windows.Forms.Timer { Interval=200 };
+                wake.Tick+=(s,e)=>{ if(!closing && activation.WaitOne(0)) { Restore(); Write("Activated existing window"); } };
+                wake.Start();
                 main.Shown += async (s,e) => { try {
                     StartService();
                     if(await Task.WhenAny(Ready.Task,Task.Delay(60000))!=Ready.Task || (port=await Ready.Task)==0) throw new Exception("Local service did not start. Check the diagnostic log. / 服务启动失败，请检查诊断日志。");
@@ -165,7 +168,7 @@ internal static class Host {
                     if(!closing && updates!=null && e.CloseReason==CloseReason.UserClosing) { e.Cancel=true; main.Hide(); updates.Hidden(); return; }
                     closing=true;
                 };
-                try { Application.Run(main); } finally { wait.Unregister(null); }
+                try { Application.Run(main); } finally { wake.Dispose(); }
             } catch(Exception e) { Error(e); }
             finally { closing=true; if(updates!=null) updates.Dispose(); try { if(service!=null && !service.HasExited) { service.StandardInput.Close(); service.WaitForExit(5000); } } catch(InvalidOperationException) {} finally { if(job!=IntPtr.Zero) CloseHandle(job); try { File.Delete(Ticket); } catch(IOException) {} } }
         }

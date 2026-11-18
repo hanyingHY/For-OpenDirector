@@ -20,6 +20,7 @@ Add-Type @'
 using System;
 using System.Runtime.InteropServices;
 public static class DesktopProbe {
+    [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr wparam, IntPtr lparam);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
 }
 '@
@@ -42,8 +43,10 @@ function Test-UI($phase) {
         if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
         if ($modern) {
             $proc.Refresh()
+            # SC_CLOSE is the title-bar X. A bare WM_CLOSE from CloseMainWindow
+            # is categorized by WinForms as a Task Manager shutdown, not UserClosing.
             $window=$proc.MainWindowHandle
-            if (($window -eq [IntPtr]::Zero) -or ![DesktopProbe]::IsWindowVisible($window) -or !$proc.CloseMainWindow()) { throw 'Could not request window close' }
+            if (($window -eq [IntPtr]::Zero) -or ![DesktopProbe]::IsWindowVisible($window) -or ![DesktopProbe]::PostMessage($window,0x112,[IntPtr]0xF060,[IntPtr]::Zero)) { throw 'Could not request window close' }
             $until=[DateTime]::UtcNow.AddSeconds(5)
             while ([DesktopProbe]::IsWindowVisible($window) -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
             if ($proc.HasExited -or [DesktopProbe]::IsWindowVisible($window)) { throw "Close did not hide main HWND; exited=$($proc.HasExited)" }

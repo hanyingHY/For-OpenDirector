@@ -26,7 +26,11 @@ if ($env:OD_AGENT_DIAGNOSTIC -eq '1') {
                     asyncio.create_task(stacks())
 '@
     $service="$root\app\service.py"
-    Copy-Item desktop/service.py $service -Force
+    # Try the smallest integration seam against the unmodified installed loop.
+    $native="$root\app\python\Lib\site-packages\opendirector\agent\native.py"
+    $text=[IO.File]::ReadAllText($native).Replace("'git', 'init', '--quiet', '--template=', cwd=work,","'git', 'init', '--quiet', '--template=', cwd=work, stdin=asyncio.subprocess.DEVNULL,")
+    [IO.File]::WriteAllText($native,$text)
+    $env:PYTHONFAULTHANDLER='1' 
     $text=[IO.File]::ReadAllText($service).Replace("                    print(f'OD-DESKTOP-READY",$probe+"`n                    print(f'OD-DESKTOP-READY")
     [IO.File]::WriteAllText($service,$text)
 }
@@ -96,6 +100,7 @@ function Test-UI($phase) {
     }
 }
 Test-UI 'create'
+if ($env:OD_AGENT_DIAGNOSTIC -eq '1') { return }
 # Simulate an interrupted host, then reinstall without deleting projects.
 Run-Installer
 # Upstream intentionally retains the last writer's lease for 60s on crash.

@@ -30,5 +30,6 @@ jobs:
             Get-Content $_.FullName | ForEach-Object { $row=$_ | ConvertFrom-Json; if ($row.native.part.tool) { Write-Output ("::warning::Tool "+$row.native.part.tool+": "+$row.native.part.state.status+" "+$row.native.part.state.error+" "+([string]$row.native.part.state.output).Substring(0,[Math]::Min(450,([string]$row.native.part.state.output).Length))) } }
           }
           Get-ChildItem $path -Recurse -Filter '*.jsonl' | ForEach-Object { Write-Output "::notice::Trace $($_.Name), $($_.Length) bytes" }
+          Get-WinEvent -FilterHashtable @{LogName='Application';Id=1000;StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue | Select-Object -First 2 | ForEach-Object { Write-Output ('::notice::'+($_.Message -replace '[\r\n]',' ').Substring(0,[Math]::Min(650,$_.Message.Length))) }
           $logs=Get-ChildItem "$env:USERPROFILE/.local/share/opencode/log" -Filter '*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
           if ($logs) { Get-Content $logs[0].FullName -Tail 6 | ForEach-Object { Write-Output ('::notice::OpenCode '+$_.Substring(0,[Math]::Min(500,$_.Length))) } }

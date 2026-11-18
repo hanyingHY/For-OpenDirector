@@ -24,8 +24,10 @@
 
 核心命令、包来源、运行时版本与可下载产物见 [README](README.md)。
 
+desktop.6 新增：画布自动创建节点会避让已占位置（64 单位间隔），按水平或垂直轴取最近空位；拖放、替换、打开旧工程不触发全图重排。已有叠放的旧工程通过「自动排列」整理，`Shift+1` 看全图，`Ctrl+Z` 撤销。
+
 ## 可核对的证据与仍需人工验收的部分
 
-- [原生 Windows 构建、安装测试、更新清单签名及安装重启](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44269711786)；[同一份安装器的独立跨版本验收](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44269876665)。构建源码 `23a3a14`；实际安装包以 `delivery/SHA256SUMS.txt` 指纹为准，不用 Git 提交号代替文件校验。
-- [升级前中文操作](delivery/windows-demo.mp4) → [升级后同一项目英文 Agent 与时间线操作](delivery/windows-workflow.mp4) → [真正导出的 MP4](delivery/timeline-export.mp4)。演示为真实窗口截图帧；录像压缩了没有界面变化的等待时间，不能用来比较推理速度。
+- [原生 Windows 构建、安装测试、更新清单签名及安装重启](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032)；[同一份安装器的独立跨版本验收](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44299900134)。构建源码 `049daf0`；实际安装包以 `delivery/SHA256SUMS.txt` 指纹为准，不用 Git 提交号代替文件校验。
+- [旧版画布重叠与自动排列修复](delivery/canvas-debug.mp4) → [desktop.6 完整 Windows 工作流](delivery/studio-walkthrough.mp4) → [真正导出的 MP4](delivery/timeline-export.mp4)。演示为真实窗口截图帧；录像压缩了没有界面变化的等待时间，不能用来比较推理速度。
 - 本轮有原生运行记录的异常路径包括并行安装竞争、上次目录交换中断且重试暂存失败、未认证访问、第二写入会话、旧端口已占用、宿主被终止、错误数据目录和运行时拒绝覆盖安装。未把每一个托盘菜单项的手动点击、每一种中断时机或任意第三方模型/编码器算作自动化通过。量产前仍应在正式 Win10/Win11 机型上核对托盘授权与拒绝、真实服务商恢复、SmartScreen 和系统编码器。

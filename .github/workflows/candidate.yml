@@ -1,0 +1,92 @@
+name: Verify existing Windows installer
+on:
+  push:
+    paths: ['delivery/candidate.json']
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    outputs:
+      source: ${{ steps.select.outputs.source }}
+      build: ${{ steps.select.outputs.build }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: select
+        name: Require a build from this branch and repository
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $candidate = Get-Content delivery/candidate.json -Raw | ConvertFrom-Json
+          $id=[long]$candidate.run
+          $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$id" | ConvertFrom-Json
+          if ($run.head_sha -ne $candidate.source -or $run.head_branch -ne $env:GITHUB_REF_NAME -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/windows.yml') { throw 'Unrecognized build' }
+          "source=$($run.head_sha)" >> $env:GITHUB_OUTPUT
+          "build=$id" >> $env:GITHUB_OUTPUT
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.select.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: delivery
+      - name: Install → edit → export → restart → reinstall → render → uninstall
+        env:
+          OD_VERIFY_RENDER: '1'
+        run: ./scripts/smoke.ps1
+      - name: Identify tested bytes
+        shell: pwsh
+        run: |
+          $file=Get-Item delivery/*-Setup.exe
+          $hash=(Get-FileHash $file).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" | Out-File delivery/SHA256SUMS.txt -Encoding ascii
+          Write-Output "::notice::Installer SHA-256: $hash"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: Native-acceptance
+          path: |
+            delivery/windows-*.png
+            delivery/windows-demo.mp4
+            delivery/timeline-export.mp4
+            delivery/SHA256SUMS.txt
+  # Keep only small, inspectable acceptance evidence in Git. The executable is
+  # a release asset, not a 180+ MB Git blob. Never write to upstream or main
+  # from a feature branch, and never force-push over concurrent changes.
+  retain:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: Native-acceptance
+          path: delivery
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.verify.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: delivery
+      - name: Preserve Windows capture and checksum on the tested working branch
+        run: |
+          cd delivery && sha256sum --check SHA256SUMS.txt && cd ..
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add delivery/windows-canvas.png delivery/windows-reopened-en.png delivery/windows-timeline.png delivery/windows-demo.mp4 delivery/timeline-export.mp4 delivery/SHA256SUMS.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record installed Windows application and verified MP4 output"
+            git push origin "HEAD:$GITHUB_REF"
+          fi
+      - name: Retain exact EXE in a private release draft (not a public release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ needs.verify.outputs.source }}
+        run: |
+          gh release create "windows-preview-${GITHUB_RUN_ID}" --draft --target "$SOURCE" --title 'OpenDirector for Windows x64 · desktop.1 (unsigned preview)' --notes "Unofficial Windows build. Portable model credentials are not included. See README for requirements. Acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-demo.mp4

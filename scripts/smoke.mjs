@@ -66,6 +66,7 @@ try {
     await page.locator(`.react-flow__node[data-id="${nodeId}"] img.cw-image-preview`).waitFor();
     assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
     await page.screenshot({path:'delivery/windows-reopened-en.png'});
+    if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }
   }
   process.exit(0);
 } catch(e) {

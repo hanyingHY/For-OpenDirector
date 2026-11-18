@@ -64,6 +64,12 @@ try {
     };
   }
   if(zh) {
+    if(version==='0.1.4-desktop.5' && process.env.OD_PREVIOUS_INSTALLER){
+      stage='reproduce previous canvas overlap';
+      const end=await recordWindow();
+      await (await import('../verification/legacy-sidebar.mjs')).legacySidebar(page);
+      await end('delivery/windows-sidebar-before.mp4');
+    }
     stage='capture';
     const finishCapture=await recordWindow();
     stage='create project';

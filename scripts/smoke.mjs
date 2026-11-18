@@ -78,6 +78,7 @@ try {
     const [download]=await Promise.all([page.waitForEvent('download'),page.getByRole('button',{name:'导出画布',exact:true}).click()]);
     await download.saveAs('.work/export.canvas'); assert.equal(readFileSync('.work/export.canvas').subarray(0,2).toString(),'PK');
     const project=projects().find(p=>p.name==='Blue Hour · 轨道晨光'); assert(project); await assertLocked(project.id);
+    if(process.env.OD_AGENT_DIAGNOSTIC==='1') await (await import('../verification/agent-window.mjs')).agentWindow(page,project.id);
     writeFileSync('.work/check.json',JSON.stringify({project:project.id,nodeId}));
     await finishCapture('delivery/windows-demo.mp4');
   } else {

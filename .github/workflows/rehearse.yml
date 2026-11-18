@@ -16,4 +16,12 @@ jobs:
           github-token: ${{ github.token }}
           path: delivery
       - run: ./scripts/smoke.ps1
-        env: {OD_VERIFY_RENDER: '1'}
+        env: {OD_VERIFY_RENDER: '1', OD_AGENT_DIAGNOSTIC: '1'}
+      - name: Report synthetic test-only Agent errors
+        if: failure()
+        shell: pwsh
+        run: |
+          $path=Join-Path ([IO.Path]::GetTempPath()) 'OpenDirector 测试 projects'
+          Get-ChildItem $path -Recurse -Filter '*.opencode.jsonl' | Select-Object -Last 1 | ForEach-Object {
+            Get-Content $_.FullName | Select-String -Pattern 'error|stderr|failed' | Select-Object -Last 3 | ForEach-Object { Write-Output ('::warning::'+($_.Line.Substring(0,[Math]::Min($_.Line.Length,900)))) }
+          }

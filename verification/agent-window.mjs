@@ -36,5 +36,8 @@ export async function agentWindow(page, project){
     await editor.press('Escape');
     await page.locator('#canvas-assistant').waitFor({state:'hidden'});
     console.log('PASS: installed chat send → active Agent detected → real CLI write → saved reply and verified project asset');
-  }catch(e){throw fixtureError??e;}finally{server.close(); server.closeAllConnections();}
+  }catch(e){
+    const detail=(await page.locator('#canvas-assistant').innerText()).slice(-1600);
+    throw Error(`Agent fixture calls=${calls}, receipt=${!!receipt}: ${fixtureError??e}; ${detail}`);
+  }finally{server.close(); server.closeAllConnections();}
 }

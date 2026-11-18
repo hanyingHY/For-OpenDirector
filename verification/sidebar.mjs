@@ -2,7 +2,6 @@
 // then compare IDs and document positions after closing and reopening the view.
 import assert from 'node:assert/strict';
 export async function sidebarCheck(page) {
-  const prior = page.url();
   const button = name => page.getByRole('button',{name,exact:true});
   const count = n => page.waitForFunction(n => document.querySelectorAll('.react-flow__node').length===n,n);
   const saved = () => page.getByText('Saved on this device',{exact:true}).waitFor();
@@ -21,6 +20,7 @@ export async function sidebarCheck(page) {
     return Object.fromEntries(nodes.map(n=>[n.dataset.id,n.style.transform]));
   });
   await button('Switch project').click();
+  const prior = await page.getByRole('menuitemradio',{checked:true}).getAttribute('title');
   await page.getByRole('menuitem',{name:'New canvas project',exact:true}).click();
   const title=page.getByRole('textbox',{name:'Project name',exact:true});
   await title.fill('Canvas placement check'); await title.press('Enter'); await saved(); await count(0);
@@ -38,6 +38,7 @@ export async function sidebarCheck(page) {
   assert.deepEqual(await geometry(),before,'Reload changed geometry');
   await page.screenshot({path:'delivery/windows-sidebar.png'});
   await page.waitForTimeout(900);
-  await page.goto(prior); await saved();
+  await button('Switch project').click();
+  await page.getByRole('menuitemradio',{name:prior,exact:true}).click(); await saved();
   console.log('PASS: six sidebar tools; 13 actual cards; 78 non-intersecting pairs; undo/redo and persisted coordinates');
 }

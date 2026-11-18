@@ -106,6 +106,8 @@ try {
     await page.locator(`.react-flow__node[data-id="${nodeId}"] img.cw-image-preview`).waitFor();
     await finishSidebar('delivery/windows-sidebar.mp4');
     const finishCapture=modern?await recordWindow():null;
+    stage='installed image editors';
+    await (await import('../verification/image-edits.mjs')).imageEdits(page,project,nodeId);
     if(modern){ stage='installed Agent chat'; await (await import('../verification/agent-window.mjs')).agentWindow(page,project); }
     if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }
     if(finishCapture) await finishCapture('delivery/windows-workflow.mp4');

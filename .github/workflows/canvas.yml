@@ -56,4 +56,9 @@ jobs:
           trap 'kill "$api" "$web" || true' EXIT
           curl --retry 40 --retry-all-errors --retry-delay 1 -fsS "$CREATION_WEB_URL/" -o /dev/null
           curl --retry 40 --retry-all-errors --retry-delay 1 -fsS -H 'X-OpenDirector-Request: 1' "$CREATION_API_URL/api/health" -o /dev/null
-          node "$driver"
+          if ! node "$driver" >"$RUNNER_TEMP/journey.log" 2>&1; then
+            tail -80 "$RUNNER_TEMP/journey.log"
+            echo "::error::$(tail -35 "$RUNNER_TEMP/journey.log" | tr '\n' ' ' | cut -c1-3600)"
+            exit 1
+          fi
+          tail -12 "$RUNNER_TEMP/journey.log"

@@ -16,6 +16,10 @@ if ($LASTEXITCODE) { throw 'pytest installation failed' }
 $case = Join-Path $src 'tests/test_native_runtime.py'
 $old = Get-Content -Raw -Encoding utf8 $case
 $adjusted = $old.Replace("--text 'Real OpenCode plan'", '--text \"Real OpenCode plan\"')
+# A fixture provider sees only the synthetic project. Surface short tool
+# results to diagnose platform-specific skill discovery and CLI quoting.
+$needle='        count = len(requests)'
+$adjusted=$adjusted.Replace($needle, "        for m in payload['messages']:`n            if m.get('role') == 'tool': print('FIXTURE_TOOL', m.get('tool_call_id'), str(m.get('content',''))[:400], flush=True)`n"+$needle)
 if ($old -eq $adjusted) { throw 'Fixture command changed upstream' }
 [IO.File]::WriteAllText($case, $adjusted, [Text.UTF8Encoding]::new($false))
 $trace=Join-Path ([IO.Path]::GetTempPath()) 'OD-agent-probe'
@@ -26,10 +30,11 @@ try {
   Get-Content "$base\..\agent-test.txt" -Tail 45
   if ($status) {
     # Only report tool errors from this disposable test's fake-model traces.
+    Select-String -Path "$base\..\agent-test.txt" -Pattern 'FIXTURE_TOOL|agent.model.error' | Select-Object -Last 12 | ForEach-Object { Write-Output "::warning::$($_.Line)" }
     Get-ChildItem $trace -Filter '*.opencode.jsonl' -Recurse | ForEach-Object {
       Get-Content $_.FullName | ForEach-Object {
         $part=($_ | ConvertFrom-Json).native.part
-        if ($part.tool -eq 'bash') { Write-Output ('::warning::CLI output: '+(($part.state.output + ' ' + $part.state.error) -replace '[\r\n]',' ').Substring(0,[Math]::Min(1500,($part.state.output + ' ' + $part.state.error).Length))) }
+        if ($part.tool) { Write-Output ('::warning::CLI output: '+(($part.state.output + ' ' + $part.state.error) -replace '[\r\n]',' ').Substring(0,[Math]::Min(1500,($part.state.output + ' ' + $part.state.error).Length))) }
       }
     }
     Get-Content "$base\..\agent-test.txt" -Tail 10 | ForEach-Object { Write-Output "::warning::$_" }; throw 'Native bundled Agent regression failed'

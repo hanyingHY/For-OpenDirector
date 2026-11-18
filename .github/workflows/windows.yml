@@ -41,6 +41,7 @@ jobs:
           path: |
             delivery/windows-*.png
             delivery/windows-demo.mp4
+            delivery/windows-workflow.mp4
             delivery/timeline-export.mp4
   sign-update:
     needs: package
@@ -82,5 +83,6 @@ jobs:
         run: |
           python -m pip install sigstore==4.5.1
           python -m unittest discover -s tests -v
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python verification/update_handoff.py
           exit $LASTEXITCODE

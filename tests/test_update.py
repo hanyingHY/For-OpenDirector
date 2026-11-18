@@ -79,6 +79,13 @@ class Updates(unittest.TestCase):
             m = dict(self.m); m[key]=value
             with self.assertRaises(ValueError): u.metadata(json.dumps(m),b'',self.new,lambda *a:None)
 
+    def test_oversized_cached_descriptor_rejected_before_signature_or_execution(self):
+        dest = self.cache / self.new
+        dest.mkdir()
+        (dest/u.MANIFEST).write_bytes(b' ' * 8193)
+        with self.assertRaisesRegex(ValueError, 'too large'):
+            u.handoff(self.old, self.cache, self.new, 1)
+
     def test_no_downgrade_even_on_handoff(self):
         for ver in [self.old,self.new,'../bad']:
             with self.assertRaises(ValueError): u.handoff(self.new,self.cache,ver,1)

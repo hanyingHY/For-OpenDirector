@@ -42,7 +42,7 @@ internal sealed class Updates : IDisposable {
     readonly string dir = AppDomain.CurrentDomain.BaseDirectory;
     Process worker;
     string ready;
-    bool cancelled, disposed, busy;
+    bool cancelled, disposed, busy, checking;
     public bool Applying { get; private set; }
 
     public Updates(Form form, Action show, Func<string,Task<bool>> ask, Action close, Action<string> write, Action<Process> ownWorker) {
@@ -61,7 +61,7 @@ internal sealed class Updates : IDisposable {
         menu.Items.Add("注册或修复 CLI / Register or repair CLI",null,(s,e)=>Command(false));
         menu.Items.Add("移除 CLI 注册 / Remove CLI registration",null,(s,e)=>Command(true));
         menu.Items.Add(automatic); menu.Items.Add(check); menu.Items.Add(stop); menu.Items.Add(install);
-        menu.Items.Add("退出应用 / Quit",null,async (s,e)=>{ if(!Applying && await confirm("Quit OpenDirector? / 退出应用？")) closeForInstall(); });
+        menu.Items.Add("退出应用 / Quit",null,(s,e)=>Quit());
         icon.DoubleClick+=(s,e)=>show();
         check.Click+=(s,e)=>Check(true); stop.Click+=(s,e)=>Cancel(); install.Click+=(s,e)=>Install();
         icon.Icon=SystemIcons.Application; icon.Text="OpenDirector · 更新 / Updates"; icon.ContextMenuStrip=menu;
@@ -69,9 +69,12 @@ internal sealed class Updates : IDisposable {
         timer.Tick+=(s,e)=>{if(automatic.Checked) Check(false);}; timer.Start();
         Refresh(); if(automatic.Checked) Check(false);
     }
-    void Refresh() { check.Enabled=!busy; stop.Enabled=busy&&!Applying; automatic.Enabled=!Applying; install.Enabled=!busy&&ready!=null; }
+    public async void Quit() {
+        if(!disposed && !Applying && await confirm("Quit OpenDirector? / 退出应用？") && !disposed && !Applying) closeForInstall();
+    }
+    void Refresh() { check.Enabled=!busy; stop.Enabled=checking; automatic.Enabled=!Applying; install.Enabled=!busy&&ready!=null; }
     void Cancel() {
-        if(!busy || Applying) return;
+        if(!checking) return;
         cancelled=true;
         try { if(worker!=null && !worker.HasExited) worker.Kill(); } catch(InvalidOperationException) {}
     }
@@ -99,7 +102,7 @@ internal sealed class Updates : IDisposable {
     }
     async void Check(bool manual) {
         if(busy || disposed) return;
-        busy=true; cancelled=false; ready=null; Refresh();
+        busy=checking=true; cancelled=false; ready=null; Refresh();
         try {
             string result=await Run("",true);
             if(disposed || cancelled) return;
@@ -111,14 +114,14 @@ internal sealed class Updates : IDisposable {
                 icon.ShowBalloonTip(10000,"OpenDirector " + ready,"新版已验证。准备好后从托盘安装。\nVerified update ready. Install from the tray.",ToolTipIcon.Info);
             }
         } catch(Exception ex) { if(!disposed && !cancelled) Problem(ex,manual); }
-        finally { busy=false; if(!disposed) Refresh(); }
+        finally { checking=busy=false; if(!disposed) Refresh(); }
         if(manual && ready!=null && !disposed) Install();
     }
     async void Install() {
         if(busy || disposed || ready==null) return;
         string version=ready;
         busy=true; Refresh();
-        if(!await confirm("Install " + version + " and restart? / 安装并重启？") || disposed || cancelled) {
+        if(!await confirm("Install " + version + " and restart? / 安装并重启？") || disposed) {
             busy=false; if(!disposed) Refresh(); return;
         }
         Applying=true; Refresh();

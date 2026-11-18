@@ -1,5 +1,6 @@
 $ErrorActionPreference='Stop'
 trap { Write-Output ("::error::Smoke line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber,$_.Exception.Message); exit 1 }
+Get-ChildItem -Path delivery/windows-*.png,delivery/windows-*.mp4,delivery/timeline-export.mp4,delivery/SHA256SUMS.txt -ErrorAction SilentlyContinue | Remove-Item
 $installer = (Get-ChildItem delivery/*.exe).FullName
 $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
 $tempRoot=[IO.Path]::GetTempPath()
@@ -39,6 +40,7 @@ function Test-UI($phase) {
         $proc=Start-Process "$root\app\OpenDirector.exe" -PassThru
     } finally { $env:PATH=$hostPath }
     try {
+        if ($phase -eq 'reopen') { $env:OD_TEST_HOST_PID=$proc.Id }
         node scripts/smoke.mjs $phase
         if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
         if ($modern) {
@@ -64,6 +66,14 @@ function Test-UI($phase) {
             $before=(Get-FileHash "$root\app\OpenDirector.exe").Hash
             $blocked=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
             if (!$blocked.ExitCode -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or $proc.HasExited) { throw 'Live install was not refused safely' }
+            if ($phase -eq 'reopen') {
+                ./verification/quit.ps1 -HostId $proc.Id -Agents 0 -Accept
+                if (Test-Path "$env:LOCALAPPDATA\OpenDirector\Desktop\session.bin") { throw 'Clean exit left a CLI ticket' }
+                $offline=(& "$root\app\OpenDirector-CLI.exe" project list | Out-String)
+                if (!$LASTEXITCODE -or $offline -notmatch 'Open or restart OpenDirector') { throw 'Missing stopped-app CLI guidance' }
+                & "$root\app\OpenDirector-CLI.exe" --help | Out-Null
+                if ($LASTEXITCODE) { throw 'CLI help must work without a live desktop' }
+            }
             Write-Output 'PASS: occupied legacy port, authenticated desktop, hide and single-instance restore'
         }
     } finally {
@@ -72,8 +82,22 @@ function Test-UI($phase) {
     }
 }
 Test-UI 'create'
-# Simulate an interrupted host, then reinstall without deleting projects.
-Run-Installer
+# Mimic the durable state after the previous directory was renamed, but
+# before activation. Force a staging failure: the old version must be back.
+$before=(Get-FileHash "$root\app\OpenDirector.exe").Hash
+Rename-Item "$root\app" previous
+Set-Content -LiteralPath "$root\incoming" -Value 'intentional staging blocker'
+$failed=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+if (!$failed.ExitCode -or (Get-FileHash "$root\app\OpenDirector.exe").Hash -ne $before) { throw 'Interrupted upgrade lost its last good app' }
+Remove-Item -LiteralPath "$root\incoming"
+# Hold the real installer in its normal extraction window, not a mocked mutex.
+$primary=Start-Process $installer -ArgumentList '/S' -PassThru
+$until=[DateTime]::UtcNow.AddSeconds(60)
+while (!(Test-Path "$root\incoming") -and !$primary.HasExited -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
+if (!(Test-Path "$root\incoming")) { throw 'Did not observe installer staging' }
+$second=Start-Process $installer -ArgumentList '/S' -PassThru
+if (!$second.WaitForExit(20000) -or !$second.ExitCode) { throw 'Overlapping installer not refused' }
+if (!$primary.WaitForExit(150000) -or $primary.ExitCode) { throw 'First installer failed' }
 # Upstream intentionally retains the last writer's lease for 60s on crash.
 Start-Sleep -Seconds 61
 Test-UI 'reopen'

@@ -61,7 +61,7 @@ internal static class Host {
     static CoreWebView2Environment engine;
     static Form main;
     static string NewSecret() { var b = new byte[32]; using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(b); return Convert.ToBase64String(b); }
-    static void Write(string s) { lock (LogLock) { try { File.AppendAllText(Log, DateTime.Now.ToString("s") + " " + s + Environment.NewLine); } catch (IOException) {} } }
+    static void Write(string s) { lock (LogLock) { try { File.AppendAllText(Log, DateTime.Now.ToString("s") + " " + s + Environment.NewLine); } catch (IOException) {} catch (UnauthorizedAccessException) {} } }
     [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr CreateJobObject(IntPtr a, string name);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool SetInformationJobObject(IntPtr handle, int info, IntPtr data, uint size);
     [DllImport("kernel32.dll", SetLastError=true)] static extern bool AssignProcessToJobObject(IntPtr handle, IntPtr proc);
@@ -89,8 +89,31 @@ internal static class Host {
         service.BeginErrorReadLine(); service.BeginOutputReadLine(); service.StandardInput.WriteLine(Secret); service.StandardInput.Flush();
     }
     static bool Local(string address) { Uri uri; return Uri.TryCreate(address,UriKind.Absolute,out uri) && uri.GetLeftPart(UriPartial.Authority) == Origin; }
-    static Form Window() {
-        return new Form { Text="OpenDirector", Width=1440, Height=900, MinimumSize=new Size(800,560), StartPosition=FormStartPosition.CenterScreen, BackColor=Color.FromArgb(24,24,24) };
+    // Alt+Space works even when Explorer has hidden the notification icon.
+    // Keep Quit separate from SC_CLOSE (hide). No renderer IPC or test-only command.
+    sealed class MainWindow : Form {
+        const int QuitCommand = 0x1F00;
+        [DllImport("user32.dll")] static extern IntPtr GetSystemMenu(IntPtr hwnd, bool revert);
+        [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern bool AppendMenu(IntPtr menu, uint flags, UIntPtr id, string text);
+        protected override void OnHandleCreated(EventArgs e) {
+            base.OnHandleCreated(e);
+            IntPtr menu=GetSystemMenu(Handle,false);
+            AppendMenu(menu,0x800,UIntPtr.Zero,null);
+            AppendMenu(menu,0,(UIntPtr)QuitCommand,"退出 OpenDirector / &Quit OpenDirector");
+        }
+        protected override void WndProc(ref Message m) {
+            if(m.Msg==0x0112 && (m.WParam.ToInt64() & 0xFFF0)==QuitCommand) {
+                if(updates!=null && !closing) BeginInvoke((Action)updates.Quit);
+                return;
+            }
+            base.WndProc(ref m);
+        }
+    }
+    static Form Window(bool primary=false) {
+        Form form=primary?(Form)new MainWindow():new Form();
+        form.Text="OpenDirector"; form.Size=new Size(1440,900); form.MinimumSize=new Size(800,560);
+        form.StartPosition=FormStartPosition.CenterScreen; form.BackColor=Color.FromArgb(24,24,24);
+        return form;
     }
     static async Task Mount(Form form, string address) {
         var view = new WebView2 { Dock=DockStyle.Fill, DefaultBackgroundColor=Color.FromArgb(24,24,24) };
@@ -143,8 +166,9 @@ internal static class Host {
             if(!first) { foreach(var p in Process.GetProcessesByName("OpenDirector")) using(p) { if(p.Id!=Process.GetCurrentProcess().Id) AllowSetForegroundWindow(p.Id); } activation.Set(); return; }
             try {
                 Directory.CreateDirectory(State);
-                if(File.Exists(Log) && new FileInfo(Log).Length>2000000) { File.Copy(Log,Log+".old",true); File.Delete(Log); }
-                main=Window(); main.Controls.Add(new Label { Text="OpenDirector   ·   Starting / 正在启动…", ForeColor=Color.White, Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleCenter });
+                try { if(File.Exists(Log) && new FileInfo(Log).Length>2000000) { File.Copy(Log,Log+".old",true); File.Delete(Log); } }
+                catch(IOException) {} catch(UnauthorizedAccessException) {}
+                main=Window(true); main.Controls.Add(new Label { Text="OpenDirector   ·   Starting / 正在启动…", ForeColor=Color.White, Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleCenter });
                 // WinForms may destroy a hidden form's HWND. Consume the
                 // activation event on the UI thread, independently of that HWND.
                 var wake=new System.Windows.Forms.Timer { Interval=200 };

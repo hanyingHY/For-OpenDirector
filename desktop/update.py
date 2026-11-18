@@ -148,7 +148,9 @@ def handoff(installed, cache, version, parent):
     if number(version) <= number(installed) or parent <= 0:
         raise ValueError('Refusing downgrade or invalid parent')
     dest = cache / version
-    m = metadata((dest/MANIFEST).read_bytes(), (dest/BUNDLE).read_bytes(), version, authenticate)
+    def cached(path, limit):
+        return small(lambda f: f.open('rb'), path, limit)
+    m = metadata(cached(dest/MANIFEST, 8192), cached(dest/BUNDLE, 128*1024), version, authenticate)
     exe = dest / installer_name(version)
     with read_locked(exe) as stream:
         if not matches(stream, m):

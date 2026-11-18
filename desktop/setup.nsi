@@ -4,6 +4,7 @@ Unicode true
 !include "FileFunc.nsh"
 !define /file OD_VERSION "VERSION"
 Var updateParent
+Var appGate
 Name "OpenDirector"
 OutFile "..\delivery\OpenDirector-${OD_VERSION}-x64-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\OpenDirector"
@@ -18,13 +19,25 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
-!macro CheckClosed
-  System::Call 'kernel32::OpenMutexW(i 0x100000, i 0, w "Local\OpenDirectorDesktop.x64")p.r0'
-  ${If} $0 P<> 0
-    System::Call 'kernel32::CloseHandle(p r0)'
-    MessageBox MB_OK|MB_ICONSTOP "Quit OpenDirector from the tray before continuing. / 请先从托盘退出 OpenDirector。" /SD IDOK
+!macro ReserveApp
+  ; Atomic creation, not OpenMutex followed by an unprotected file exchange.
+  ; Host (including desktop.4), installer and uninstaller share this gate.
+  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "Local\OpenDirectorDesktop.x64")p.r0 ?e'
+  Pop $1
+  ${If} $0 = 0
+    MessageBox MB_OK|MB_ICONSTOP "Cannot reserve installation. Retry after closing OpenDirector. / 无法锁定安装目录，请退出应用后重试。" /SD IDOK
     Abort
   ${EndIf}
+  ${If} $1 = 183
+    System::Call 'kernel32::CloseHandle(p r0)'
+    MessageBox MB_OK|MB_ICONSTOP "Quit OpenDirector from the tray and finish any other setup first. / 请先从托盘退出应用，并等待其他安装程序完成。" /SD IDOK
+    Abort
+  ${EndIf}
+  StrCpy $appGate $0
+!macroend
+!macro ReleaseApp
+  StrCpy $0 $appGate
+  System::Call 'kernel32::CloseHandle(p r0)'
 !macroend
 Function .onInit
   ${GetParameters} $0
@@ -54,7 +67,7 @@ checked:
     MessageBox MB_OK "64-bit Windows is required. / 需要 64 位 Windows。" /SD IDOK
     Abort
   ${EndIf}
-  !insertmacro CheckClosed
+  !insertmacro ReserveApp
 FunctionEnd
 Function .onInstSuccess
   ${If} $updateParent != ""
@@ -70,16 +83,26 @@ Function .onInstFailed
   ${EndIf}
 FunctionEnd
 Function un.onInit
-  !insertmacro CheckClosed
+  !insertmacro ReserveApp
 FunctionEnd
 Section
   SetShellVarContext current
   SetRegView 64
   ; Stage completely before exchanging directories: a failed extraction leaves
   ; the installed app and the user workspace untouched.
+  ; If a previous installer died between the two renames, restore the only
+  ; intact copy BEFORE touching staging. Even a failed retry leaves it usable.
+  IfFileExists "$INSTDIR\app\OpenDirector.exe" stage
+  IfFileExists "$INSTDIR\previous\OpenDirector.exe" 0 stage
+  ClearErrors
+  Rename "$INSTDIR\previous" "$INSTDIR\app"
+  IfErrors failed
+stage:
   RMDir /r "$INSTDIR\incoming"
+  IfFileExists "$INSTDIR\incoming" failed
   ClearErrors
   SetOutPath "$INSTDIR\incoming"
+  IfErrors failed
   File /r "..\.work\app\*"
   IfErrors failed
   SetOutPath "$INSTDIR"
@@ -92,7 +115,9 @@ activate:
   ClearErrors
   Rename "$INSTDIR\incoming" "$INSTDIR\app"
   IfErrors rollback
+  ClearErrors
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+  IfErrors undoActivation
   CreateShortcut "$SMPROGRAMS\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   CreateShortcut "$DESKTOP\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   WriteRegStr HKCU "${ARP}" "DisplayName" "OpenDirector (Windows x64)"
@@ -102,15 +127,26 @@ activate:
   ; CLI shell registration is opt-in (tray); preserve it across upgrades.
   RMDir /r "$INSTDIR\previous"
   Goto done
+undoActivation:
+  ClearErrors
+  Rename "$INSTDIR\app" "$INSTDIR\incoming"
+  IfErrors failed
 rollback:
   Rename "$INSTDIR\previous" "$INSTDIR\app"
 failed:
   Abort "Installation failed. Check free space and close running programs. / 安装失败，请检查空间并关闭占用文件的程序。"
 done:
+  !insertmacro ReleaseApp
 SectionEnd
 Section "Uninstall"
   SetShellVarContext current
   SetRegView 64
+  RMDir /r "$INSTDIR\app"
+  RMDir /r "$INSTDIR\incoming"
+  RMDir /r "$INSTDIR\previous"
+  IfFileExists "$INSTDIR\app\*.*" unFailed
+  IfFileExists "$INSTDIR\previous\*.*" unFailed
+  IfFileExists "$INSTDIR\incoming\*.*" unFailed
   Delete "$SMPROGRAMS\OpenDirector.lnk"
   Delete "$DESKTOP\OpenDirector.lnk"
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe" ""
@@ -119,9 +155,11 @@ Section "Uninstall"
   ${EndIf}
   DeleteRegKey HKCU "${ARP}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe"
-  RMDir /r "$INSTDIR\app"
-  RMDir /r "$INSTDIR\incoming"
-  RMDir /r "$INSTDIR\previous"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+  !insertmacro ReleaseApp
+  Goto unDone
+unFailed:
+  Abort "Close programs using OpenDirector and retry uninstall. / 请关闭占用文件的程序，再次卸载。"
+unDone:
 SectionEnd

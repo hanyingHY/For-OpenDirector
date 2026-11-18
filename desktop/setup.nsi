@@ -22,7 +22,7 @@ SetCompressor /SOLID lzma
   System::Call 'kernel32::OpenMutexW(i 0x100000, i 0, w "Local\OpenDirectorDesktop.x64")p.r0'
   ${If} $0 P<> 0
     System::Call 'kernel32::CloseHandle(p r0)'
-    MessageBox MB_OK|MB_ICONSTOP "Close OpenDirector before continuing. / 请先关闭 OpenDirector。" /SD IDOK
+    MessageBox MB_OK|MB_ICONSTOP "Quit OpenDirector from the tray before continuing. / 请先从托盘退出 OpenDirector。" /SD IDOK
     Abort
   ${EndIf}
 !macroend
@@ -99,7 +99,7 @@ activate:
   WriteRegStr HKCU "${ARP}" "DisplayVersion" "${OD_VERSION}"
   WriteRegStr HKCU "${ARP}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe" "" "$INSTDIR\app\OpenDirector.exe"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe" "" "$INSTDIR\app\OpenDirector-CLI.exe"
+  ; CLI shell registration is opt-in (tray); preserve it across upgrades.
   RMDir /r "$INSTDIR\previous"
   Goto done
 rollback:
@@ -113,7 +113,10 @@ Section "Uninstall"
   SetRegView 64
   Delete "$SMPROGRAMS\OpenDirector.lnk"
   Delete "$DESKTOP\OpenDirector.lnk"
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe"
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe" ""
+  ${If} $0 == "$INSTDIR\app\OpenDirector-CLI.exe"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe"
+  ${EndIf}
   DeleteRegKey HKCU "${ARP}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe"
   RMDir /r "$INSTDIR\app"

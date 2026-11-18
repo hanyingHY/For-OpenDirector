@@ -18,6 +18,7 @@ try {
   const context=browser.contexts()[0];
   page=context.pages()[0] || await context.waitForEvent('page');
   await page.waitForURL('http://127.0.0.1:48765/**',{timeout:60000});
+  await page.waitForSelector('.cw-workspace',{timeout:60000});
   await page.setViewportSize({width:1440,height:900});
   stage='open';
   const zh=phase==='create';
@@ -25,7 +26,11 @@ try {
   await page.reload();
   const saved=()=>page.locator('.cw-save-status').filter({hasText:zh?'已保存到本机':'Saved on this device'}).waitFor({state:'attached',timeout:60000});
   await saved();
-  assert.equal((await fetch('http://127.0.0.1:48765/api/health',{headers:{'X-OpenDirector-Request':'1'}})).status,403);
+  const modern=readFileSync(join(app,'VERSION'),'utf8').trim()==='0.1.4-desktop.4';
+  const log=readFileSync(join(process.env.LOCALAPPDATA,'OpenDirector/Desktop/desktop.log'),'utf8');
+  const port=modern ? Array.from(log.matchAll(/Local service ready on loopback port (\d+)/g)).at(-1)[1] : 48765;
+  if(modern) { assert.notEqual(+port,48765); assert.match(await page.evaluate(()=>fetch('/__desktop/activity').then(r=>r.text())),/Agent: 0; Generation .*: 0; Tools .*: 0/); }
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/health`,{headers:{'X-OpenDirector-Request':'1'}})).status,403);
   const nodes=page.locator('.react-flow__node');
   const shell=join(app,'OpenDirector-CLI.exe');
   const projects=()=>JSON.parse(execFileSync(shell,['project','list'],{encoding:'utf8'})).projects;

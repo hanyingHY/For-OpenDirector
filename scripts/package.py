@@ -63,6 +63,26 @@ def build():
     if original.count(old) != 1: raise ValueError('Unexpected upstream Windows CLI launcher')
     launcher.write_text(original.replace(old, "env['OD_AGENT_PYTHON'] = sys.executable\n        (cli_bin / 'opendirector.cmd').write_text('@\"%OD_AGENT_PYTHON%\" -m opendirector.cli %*\\n', encoding='ascii')"),encoding='utf8')
     shutil.copytree(src / 'apps/api/src/opendirector_api', site / 'opendirector_api')
+    # Expose read-only counts from the same scheduler instances that own the
+    # work. Pin both insertion points: never silently report an empty queue
+    # if the upstream composition changes.
+    api = site / 'opendirector_api'
+    def replace_once(file, old, new):
+        text = file.read_text(encoding='utf8')
+        if text.count(old) != 1: raise ValueError(f'Unexpected desktop integration point in {file.name}')
+        file.write_text(text.replace(old, new), encoding='utf8')
+    replace_once(api/'agent.py', '    return router',
+        '    router.count_active = lambda: sum(not task.done() for _, task, _ in active.values())\n    return router')
+    replace_once(api/'main.py', '    app.include_router(agent_routes(creation_projects, creation_generation, model_configs, chat_provider))',
+        """    agent = agent_routes(creation_projects, creation_generation, model_configs, chat_provider)
+    app.include_router(agent)
+
+    @app.get('/__desktop/activity', include_in_schema=False)
+    async def desktop_activity():
+        generation = sum(not j.future.done() for j in creation_generation.jobs.values())
+        generation += sum(not task.done() for task in creation_generation.accepting.values())
+        tools = sum(not task.done() for task in creation_tools.jobs.values())
+        return Response(f'Agent: {agent.count_active()}; Generation / 生成: {generation}; Tools / 工具: {tools}', media_type='text/plain')""")
     bundle = core / '_bundled'
     shutil.copytree(src / 'dist', bundle / 'web')
     shutil.copytree(src / 'packages/agent/skills', bundle / 'skills')

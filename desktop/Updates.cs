@@ -13,6 +13,23 @@ internal sealed class Updates : IDisposable {
     const string Pref = @"Software\OpenDirector\Desktop";
     readonly Form owner;
     readonly Action closeForInstall;
+    readonly Func<string,Task<bool>> confirm;
+    const string CommandKey=@"Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe";
+    void Command(bool remove) {
+        string exe=Path.Combine(dir,"OpenDirector-CLI.exe");
+        try {
+            using(var existing=Registry.CurrentUser.OpenSubKey(CommandKey)) {
+                if(existing!=null && !String.Equals(existing.GetValue("") as string,exe,StringComparison.OrdinalIgnoreCase)) {
+                    MessageBox.Show(owner,"Another command owns this name. Unchanged. / 已有其他命令使用该名称，未作修改。"); return;
+                }
+            }
+            if(remove) Registry.CurrentUser.DeleteSubKey(CommandKey,false);
+            else using(var key=Registry.CurrentUser.CreateSubKey(CommandKey)) key.SetValue("",exe);
+            MessageBox.Show(owner,remove?"Command removed / 命令已移除":"Registered: Win+R → OpenDirector-CLI.exe / 命令已注册");
+        } catch(Exception ex) { MessageBox.Show(owner,ex.Message,"OpenDirector"); }
+    }
+    bool shownTip;
+    public void Hidden() { if(!shownTip) icon.ShowBalloonTip(4000,"OpenDirector","双击托盘图标恢复窗口 / Double-click to reopen",ToolTipIcon.Info); shownTip=true; }
     readonly Action<string> log;
     readonly Action<Process> contain;
     readonly NotifyIcon icon = new NotifyIcon();
@@ -28,8 +45,8 @@ internal sealed class Updates : IDisposable {
     bool cancelled, disposed, busy;
     public bool Applying { get; private set; }
 
-    public Updates(Form form, Action close, Action<string> write, Action<Process> ownWorker) {
-        owner=form; closeForInstall=close; log=write; contain=ownWorker;
+    public Updates(Form form, Action show, Func<string,Task<bool>> ask, Action close, Action<string> write, Action<Process> ownWorker) {
+        owner=form; confirm=ask; closeForInstall=close; log=write; contain=ownWorker;
         using(var key=Registry.CurrentUser.OpenSubKey(Pref))
             automatic.Checked=key==null || !Equals(key.GetValue("AutoUpdate",1),0);
         automatic.CheckOnClick=true;
@@ -39,10 +56,16 @@ internal sealed class Updates : IDisposable {
             if(automatic.Checked) Check(false); else Cancel();
         };
         menu.Items.Add("OpenDirector  " + File.ReadAllText(Path.Combine(dir,"VERSION")).Trim()).Enabled=false;
+        menu.Items.Add("显示窗口 / Show window",null,(s,e)=>show());
+        menu.Items.Add("打开日志目录 / Open diagnostics",null,(s,e)=>Process.Start("explorer.exe","\""+Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),@"OpenDirector\Desktop")+"\""));
+        menu.Items.Add("注册或修复 CLI / Register or repair CLI",null,(s,e)=>Command(false));
+        menu.Items.Add("移除 CLI 注册 / Remove CLI registration",null,(s,e)=>Command(true));
         menu.Items.Add(automatic); menu.Items.Add(check); menu.Items.Add(stop); menu.Items.Add(install);
+        menu.Items.Add("退出应用 / Quit",null,async (s,e)=>{ if(!Applying && await confirm("Quit OpenDirector? / 退出应用？")) closeForInstall(); });
+        icon.DoubleClick+=(s,e)=>show();
         check.Click+=(s,e)=>Check(true); stop.Click+=(s,e)=>Cancel(); install.Click+=(s,e)=>Install();
         icon.Icon=SystemIcons.Application; icon.Text="OpenDirector · 更新 / Updates"; icon.ContextMenuStrip=menu;
-        icon.BalloonTipClicked+=(s,e)=>Install(); icon.Visible=true;
+        icon.BalloonTipClicked+=(s,e)=>{ if(ready!=null) Install(); else show(); }; icon.Visible=true;
         timer.Tick+=(s,e)=>{if(automatic.Checked) Check(false);}; timer.Start();
         Refresh(); if(automatic.Checked) Check(false);
     }
@@ -93,7 +116,7 @@ internal sealed class Updates : IDisposable {
     }
     async void Install() {
         if(busy || disposed || ready==null) return;
-        if(MessageBox.Show(owner,"安装 " + ready + " 并重启？请先保存并等待导出及 Agent 任务结束，否则任务将被中断。\nInstall and restart? Save your work and finish exports and Agent tasks first. Running tasks will stop.","OpenDirector",MessageBoxButtons.YesNo,MessageBoxIcon.Question,MessageBoxDefaultButton.Button2)!=DialogResult.Yes) return;
+        if(!await confirm("Install " + ready + " and restart? / 安装并重启？") || busy || disposed || ready==null) return;
         Applying=true; busy=true; Refresh();
         try {
             await Run(" --install "+ready+" "+Process.GetCurrentProcess().Id,false);

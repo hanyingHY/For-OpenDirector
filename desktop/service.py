@@ -1,27 +1,38 @@
-"""Private desktop transport around the unmodified OpenDirector ASGI app."""
+"""Private desktop transport around the OpenDirector ASGI app."""
 import asyncio
+import hashlib
 import hmac
 import os
+import re
 import socket
 import sys
 import threading
 
-PORT = 48765  # stable WebView origin keeps IndexedDB and localStorage on upgrades
-HOST = f'127.0.0.1:{PORT}'
+# Browser storage namespace only. No process needs to listen on this port.
+HOST = '127.0.0.1:48765'
 ORIGIN = 'http://' + HOST
 
 
 class DesktopSession:
-    def __init__(self, app, token):
+    def __init__(self, app, token, port=None):
         self.app = app
         self.token = token
+        self.hosts = {HOST.encode()}
+        if port:
+            self.hosts.add(f'127.0.0.1:{port}'.encode())
 
     async def __call__(self, scope, receive, send):
         if scope['type'] == 'http':
             headers = dict(scope['headers'])
-            if (headers.get(b'host') != HOST.encode() or
-                headers.get(b'origin', ORIGIN.encode()) != ORIGIN.encode() or
-                not hmac.compare_digest(headers.get(b'x-opendirector-desktop', b''), self.token)):
+            host = headers.get(b'host', b'')
+            same_origin = host in self.hosts and headers.get(b'origin', b'http://'+host) == b'http://'+host
+            challenge = re.fullmatch(r'/__desktop/probe/([a-f0-9]{32})', scope.get('path', ''))
+            if same_origin and challenge:
+                proof = hmac.new(self.token, challenge[1].encode(), hashlib.sha256).hexdigest().encode()
+                await send({'type': 'http.response.start', 'status': 200, 'headers': [(b'cache-control', b'no-store')]})
+                await send({'type': 'http.response.body', 'body': proof})
+                return
+            if not same_origin or not hmac.compare_digest(headers.get(b'x-opendirector-desktop', b''), self.token):
                 await send({'type': 'http.response.start', 'status': 403, 'headers': []})
                 await send({'type': 'http.response.body', 'body': b'Private desktop session'})
                 return
@@ -35,18 +46,21 @@ def main():
     from opendirector_api.main import create_app
     with socket.socket() as listener:
         if os.name == 'nt': listener.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-        listener.bind(('127.0.0.1', PORT))
+        listener.bind(('127.0.0.1', 0))
+        port = listener.getsockname()[1]
+        os.environ['OPENDIRECTOR_API_URL'] = f'http://127.0.0.1:{port}'
         class Service(uvicorn.Server):
             async def startup(self, sockets=None):
                 await super().startup(sockets=sockets)
                 if self.started:
-                    print('OD-DESKTOP-READY', flush=True)
+                    print(f'OD-DESKTOP-READY {port}', flush=True)
 
-        server = Service(uvicorn.Config(DesktopSession(create_app(), token), log_level='warning', access_log=False, proxy_headers=False))
+        server = Service(uvicorn.Config(DesktopSession(create_app(), token, port), log_level='warning', access_log=False, proxy_headers=False))
         def stop():
-            sys.stdin.buffer.readline()  # shutdown message or host pipe closed
+            sys.stdin.buffer.readline()
             server.should_exit = True
         threading.Thread(target=stop, daemon=True).start()
         asyncio.run(server.serve(sockets=[listener]))
+        print('OD-DESKTOP-STOPPED', flush=True)
 
 if __name__ == '__main__': main()

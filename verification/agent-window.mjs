@@ -27,7 +27,7 @@ export async function agentWindow(page, project){
     if(!await editor.isVisible())await page.locator('.cw-chat-button').click();
     await editor.fill('Save the Blue Hour plan to this project.');
     await page.locator('.cw-assistant-send').click();
-    await page.getByText('Blue Hour plan saved.',{exact:true}).first().waitFor({timeout:100000});
+    await page.getByText('Blue Hour plan saved.',{exact:true}).first().waitFor({timeout:process.env.OD_AGENT_DIAGNOSTIC==='1'?32000:100000});
     if(fixtureError)throw fixtureError;
     assert.equal(calls,2);assert(receipt.assetId);
     const snapshot=await page.evaluate(async id=>(await fetch('/api/creation/projects/'+id,{headers:{'X-OpenDirector-Request':'1'}})).json(),project);

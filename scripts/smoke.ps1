@@ -13,6 +13,10 @@ if ($env:OD_AGENT_DIAGNOSTIC -eq '1') {
                         while True:
                             await asyncio.sleep(12)
                             with open(os.path.join(os.environ['TEMP'],'od-task-locations.txt'),'w') as f:
+                                import gc,inspect
+                                for g in gc.get_objects():
+                                    if inspect.isasyncgen(g) and g.ag_frame and 'opendirector' in g.ag_code.co_filename:
+                                        print('ASYNCGEN',os.path.basename(g.ag_code.co_filename),g.ag_code.co_name,g.ag_frame.f_lineno,file=f)
                                 for task in asyncio.all_tasks():
                                     coro=task.get_coro(); names=[]
                                     while coro and hasattr(coro,'cr_code'):
@@ -21,6 +25,9 @@ if ($env:OD_AGENT_DIAGNOSTIC -eq '1') {
                                     print(' -> '.join(names),file=f)
                     asyncio.create_task(stacks())
 '@
+    $native="$root\app\python\Lib\site-packages\opendirector\agent\native.py"
+    $text=[IO.File]::ReadAllText($native).Replace("'git', 'init', '--quiet', '--template=', cwd=work,","'git', 'init', '--quiet', '--template=', cwd=work, stdin=asyncio.subprocess.DEVNULL,")
+    [IO.File]::WriteAllText($native,$text)
     $service="$root\app\service.py"
     $text=[IO.File]::ReadAllText($service).Replace("                    print(f'OD-DESKTOP-READY",$probe+"`n                    print(f'OD-DESKTOP-READY")
     [IO.File]::WriteAllText($service,$text)

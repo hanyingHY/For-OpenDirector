@@ -26,6 +26,9 @@ jobs:
             Get-Content $_.FullName | Select-String -Pattern 'error|stderr|failed' | Select-Object -Last 3 | ForEach-Object { Write-Output ('::warning::'+($_.Line.Substring(0,[Math]::Min($_.Line.Length,900)))) }
           }
           Get-Content "$env:TEMP/od-task-locations.txt" -ErrorAction SilentlyContinue | Where-Object { $_ -match 'ASYNCGEN.*(native|runtime)|produce|model' } | Select-Object -First 4 | ForEach-Object { Write-Output "::notice::$_" }
+          Get-ChildItem $path -Recurse -Filter '*.opencode.jsonl' | Select-Object -Last 1 | ForEach-Object {
+            Get-Content $_.FullName | ForEach-Object { $row=$_ | ConvertFrom-Json; if ($row.native.part.tool) { Write-Output ("::warning::Tool "+$row.native.part.tool+": "+$row.native.part.state.status+" "+$row.native.part.state.error+" "+([string]$row.native.part.state.output).Substring(0,[Math]::Min(450,([string]$row.native.part.state.output).Length))) } }
+          }
           Get-ChildItem $path -Recurse -Filter '*.jsonl' | ForEach-Object { Write-Output "::notice::Trace $($_.Name), $($_.Length) bytes" }
           $logs=Get-ChildItem "$env:USERPROFILE/.local/share/opencode/log" -Filter '*.log' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
           if ($logs) { Get-Content $logs[0].FullName -Tail 6 | ForEach-Object { Write-Output ('::notice::OpenCode '+$_.Substring(0,[Math]::Min(500,$_.Length))) } }

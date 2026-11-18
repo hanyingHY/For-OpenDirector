@@ -46,9 +46,28 @@ class DesktopSession:
         await self.app(scope, receive, send)
 
 
+def detach_control():
+    """Keep Host shutdown private. MinGit's Windows launcher otherwise waits
+    on inherited standard input after git init, so the first chat never starts.
+    Give *all* uninteractive descendants EOF without closing our control pipe.
+    """
+    control = os.fdopen(os.dup(sys.stdin.fileno()), 'rb', buffering=0)
+    with open(os.devnull, 'rb') as empty:
+        os.dup2(empty.fileno(), sys.stdin.fileno())
+    if os.name == 'nt':
+        import ctypes
+        import msvcrt
+        set_stdin = ctypes.WinDLL('kernel32', use_last_error=True).SetStdHandle
+        set_stdin.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        if not set_stdin(-10, msvcrt.get_osfhandle(sys.stdin.fileno())):
+            raise ctypes.WinError(ctypes.get_last_error())
+    return control
+
+
 def main():
     token = sys.stdin.buffer.readline().strip()
     if len(token) != 44: raise RuntimeError('Desktop handshake missing')
+    control = detach_control()
     import uvicorn
     from opendirector_api.main import create_app
     with socket.socket() as listener:
@@ -68,7 +87,8 @@ def main():
         session = DesktopSession(create_app(store=store), token, port)
         server = Service(uvicorn.Config(session, log_level='warning', access_log=False, proxy_headers=False))
         def stop():
-            sys.stdin.buffer.readline()
+            with control:
+                control.readline()
             server.should_exit = True
         threading.Thread(target=stop, daemon=True).start()
         asyncio.run(server.serve(sockets=[listener]))

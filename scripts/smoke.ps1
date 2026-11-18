@@ -25,10 +25,8 @@ if ($env:OD_AGENT_DIAGNOSTIC -eq '1') {
                                     print(' -> '.join(names),file=f)
                     asyncio.create_task(stacks())
 '@
-    $native="$root\app\python\Lib\site-packages\opendirector\agent\native.py"
-    $text=[IO.File]::ReadAllText($native).Replace("'git', 'init', '--quiet', '--template=', cwd=work,","'git', 'init', '--quiet', '--template=', cwd=work, stdin=asyncio.subprocess.DEVNULL,")
-    [IO.File]::WriteAllText($native,$text)
     $service="$root\app\service.py"
+    Copy-Item desktop/service.py $service -Force
     $text=[IO.File]::ReadAllText($service).Replace("                    print(f'OD-DESKTOP-READY",$probe+"`n                    print(f'OD-DESKTOP-READY")
     [IO.File]::WriteAllText($service,$text)
 }

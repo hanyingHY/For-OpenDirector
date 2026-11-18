@@ -1,0 +1,19 @@
+name: Diagnose installed Windows UX (no release access)
+on:
+  push:
+    paths: ['.github/workflows/rehearse.yml']
+permissions: {contents: read, actions: read}
+jobs:
+  installed:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: Windows-installer-x64
+          run-id: 44260262509
+          github-token: ${{ github.token }}
+          path: delivery
+      - run: ./scripts/smoke.ps1
+        env: {OD_VERIFY_RENDER: '1'}

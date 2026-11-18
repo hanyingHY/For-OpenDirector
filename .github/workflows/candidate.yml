@@ -73,7 +73,7 @@ jobs:
       - name: Identify tested bytes
         shell: pwsh
         run: |
-          foreach ($name in 'windows-canvas.png','windows-reopened-en.png','windows-agent-en.png','windows-timeline.png','windows-demo.mp4','windows-workflow.mp4','timeline-export.mp4') {
+          foreach ($name in 'windows-canvas.png','windows-reopened-en.png','windows-agent-en.png','windows-timeline.png','windows-sidebar.mp4','windows-sidebar.png','windows-demo.mp4','windows-workflow.mp4','timeline-export.mp4') {
             if ((Get-Item "delivery/$name" -ErrorAction Stop).Length -eq 0) { throw "Missing fresh evidence: $name" }
           }
           $file=Get-Item delivery/*-Setup.exe
@@ -87,6 +87,7 @@ jobs:
           path: |
             delivery/windows-*.png
             delivery/windows-demo.mp4
+            delivery/windows-sidebar.mp4
             delivery/windows-workflow.mp4
             delivery/timeline-export.mp4
             delivery/SHA256SUMS.txt
@@ -105,7 +106,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: ThinkFlowLab/OpenDirector
-          ref: 4360d9eb66b23598d3f637b2288745291e818862
+          ref: d05a56d712349ee7e4c61407cfc2d0258724cefa
           path: .work/OpenDirector-source
           persist-credentials: false
       - name: Real Agent, real CLI, deterministic provider
@@ -147,7 +148,7 @@ jobs:
           cd delivery && sha256sum --check SHA256SUMS.txt && cd ..
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add delivery/windows-workflow.mp4 delivery/windows-agent-en.png delivery/windows-canvas.png delivery/windows-reopened-en.png delivery/windows-timeline.png delivery/windows-demo.mp4 delivery/timeline-export.mp4 delivery/SHA256SUMS.txt
+          git add delivery/windows-sidebar.mp4 delivery/windows-sidebar.png delivery/windows-workflow.mp4 delivery/windows-agent-en.png delivery/windows-canvas.png delivery/windows-reopened-en.png delivery/windows-timeline.png delivery/windows-demo.mp4 delivery/timeline-export.mp4 delivery/SHA256SUMS.txt
           if ! git diff --cached --quiet; then
             git commit -m "Record installed Windows application and verified MP4 output"
             git push origin "HEAD:$GITHUB_REF"
@@ -162,4 +163,4 @@ jobs:
           test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
           test "$tag" = "windows-x64-$(jq -er .version delivery/windows-update.json)"
           test "$(jq -er .sha256 delivery/windows-update.json)" = "$(cut -d ' ' -f1 delivery/SHA256SUMS.txt)"
-          gh release upload "$tag" delivery/windows-update.json delivery/windows-update.json.sigstore.json delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-demo.mp4 delivery/windows-workflow.mp4
+          gh release upload "$tag" delivery/windows-update.json delivery/windows-update.json.sigstore.json delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-sidebar.mp4 delivery/windows-demo.mp4 delivery/windows-workflow.mp4

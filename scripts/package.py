@@ -12,7 +12,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / '.work'
 APP = WORK / 'app'
-SHA = '4360d9eb66b23598d3f637b2288745291e818862'
+SHA = 'd05a56d712349ee7e4c61407cfc2d0258724cefa'
 PY = 'cpython-3.12.16+20261110-x86_64-pc-windows-msvc-install_only_stripped.tar.gz'
 FF = 'ffmpeg-9.0.2-essentials_build'
 WV = '1.0.2903.40'
@@ -41,7 +41,12 @@ def build():
     APP.mkdir()
     (ROOT / 'delivery').mkdir(exist_ok=True)
     src = WORK / ('OpenDirector-' + SHA)
-    unpack(download('https://codeload.github.com/ThinkFlowLab/OpenDirector/tar.gz/' + SHA, 'upstream.tgz'), WORK)
+    if src.exists(): shutil.rmtree(src)
+    unpack(download('https://codeload.github.com/ThinkFlowLab/OpenDirector/tar.gz/' + SHA, f'upstream-{SHA}.tgz'), WORK)
+    # git apply treats paths relative to the extracted upstream tree, even
+    # when the build directory lives inside this distribution repository.
+    subprocess.run(['git', 'apply', '--no-index', str(ROOT/'patches/canvas-placement.patch')],
+                   cwd=src, env={**os.environ, 'GIT_CEILING_DIRECTORIES': str(src.parent)}, check=True)
     npm = shutil.which('npm')
     subprocess.run([npm, 'ci', '--ignore-scripts'], cwd=src, check=True)
     subprocess.run([npm, 'run', 'build'], cwd=src, check=True)

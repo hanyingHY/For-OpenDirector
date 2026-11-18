@@ -94,6 +94,11 @@ try {
     await assertLocked(project);
     assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
     await page.screenshot({path:'delivery/windows-reopened-en.png'});
+    stage='installed sidebar placement';
+    const finishSidebar=await recordWindow();
+    await (await import('../verification/sidebar.mjs')).sidebarCheck(page);
+    await page.locator(`.react-flow__node[data-id="${nodeId}"] img.cw-image-preview`).waitFor();
+    await finishSidebar('delivery/windows-sidebar.mp4');
     const finishCapture=modern?await recordWindow():null;
     if(modern){ stage='installed Agent chat'; await (await import('../verification/agent-window.mjs')).agentWindow(page,project); }
     if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }

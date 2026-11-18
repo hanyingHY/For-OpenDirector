@@ -33,11 +33,20 @@ jobs:
       - run: |
           sudo apt-get update -qq && sudo apt-get install -y ffmpeg
           python -m pip install -r requirements.txt
-          npm ci --ignore-scripts
+          # The editable-build hook has already run npm ci, postinstall and the
+          # web build. Reinstalling without scripts here breaks Agent discovery.
+          npm exec --no -- opencode --version
       - if: matrix.suite == 'frontend'
         run: npm test && npm run check:i18n && npm run check:browser-manifest && npm run build
       - if: matrix.suite == 'backend'
-        run: python -m pytest tests -q -ra
+        run: |
+          if ! python -m pytest tests -q -ra --tb=short >"$RUNNER_TEMP/pytest.log" 2>&1; then
+            tail -100 "$RUNNER_TEMP/pytest.log"
+            echo "::error::$(grep '^FAILED ' "$RUNNER_TEMP/pytest.log" | tail -16 | tr '\n' ' ' | cut -c1-3600)"
+            exit 1
+          fi
+          tail -12 "$RUNNER_TEMP/pytest.log"
+          tail -1 "$RUNNER_TEMP/pytest.log" >> "$GITHUB_STEP_SUMMARY"
       - if: contains(fromJSON('["canvas","voice","assistant"]'), matrix.suite)
         env: {SUITE: '${{ matrix.suite }}'}
         run: |

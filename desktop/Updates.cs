@@ -116,10 +116,14 @@ internal sealed class Updates : IDisposable {
     }
     async void Install() {
         if(busy || disposed || ready==null) return;
-        if(!await confirm("Install " + ready + " and restart? / 安装并重启？") || busy || disposed || ready==null) return;
-        Applying=true; busy=true; Refresh();
+        string version=ready;
+        busy=true; Refresh();
+        if(!await confirm("Install " + version + " and restart? / 安装并重启？") || disposed || cancelled) {
+            busy=false; if(!disposed) Refresh(); return;
+        }
+        Applying=true; Refresh();
         try {
-            await Run(" --install "+ready+" "+Process.GetCurrentProcess().Id,false);
+            await Run(" --install "+version+" "+Process.GetCurrentProcess().Id,false);
             closeForInstall();
         } catch(Exception e) { ready=null; Applying=false; busy=false; if(!disposed) { Refresh(); Problem(e,true); } }
     }

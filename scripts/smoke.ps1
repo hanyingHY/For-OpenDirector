@@ -1,4 +1,5 @@
 $ErrorActionPreference='Stop'
+trap { Write-Output ("::error::Smoke line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber,$_.Exception.Message); exit 1 }
 $installer = (Get-ChildItem delivery/*.exe).FullName
 $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
 $tempRoot=[IO.Path]::GetTempPath()
@@ -15,6 +16,13 @@ $hash=(Get-FileHash $settings).Hash
 $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS='--remote-debugging-port=19222'
 npm install --prefix scripts --no-save --no-package-lock playwright-core@1.56.1
 if ($LASTEXITCODE) { throw 'Smoke driver setup failed' }
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class DesktopProbe {
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+}
+'@
 function Test-UI($phase) {
     $modern=(Get-Content "$root\app\VERSION").Trim() -eq '0.1.4-desktop.4'
     $occupied=$null
@@ -34,15 +42,16 @@ function Test-UI($phase) {
         if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
         if ($modern) {
             $proc.Refresh()
-            if (!$proc.CloseMainWindow()) { throw 'Could not request window close' }
-            Start-Sleep -Milliseconds 800
-            $proc.Refresh()
-            if ($proc.HasExited -or $proc.MainWindowHandle -ne 0) { throw 'Close must hide, not exit' }
+            $window=$proc.MainWindowHandle
+            if (($window -eq [IntPtr]::Zero) -or ![DesktopProbe]::IsWindowVisible($window) -or !$proc.CloseMainWindow()) { throw 'Could not request window close' }
+            $until=[DateTime]::UtcNow.AddSeconds(5)
+            while ([DesktopProbe]::IsWindowVisible($window) -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
+            if ($proc.HasExited -or [DesktopProbe]::IsWindowVisible($window)) { throw "Close did not hide main HWND; exited=$($proc.HasExited)" }
             $second=Start-Process "$root\app\OpenDirector.exe" -PassThru
             if (!$second.WaitForExit(5000) -or $second.ExitCode -ne 0) { throw 'Second launch did not hand off' }
             $until=[DateTime]::UtcNow.AddSeconds(5)
-            do { $proc.Refresh(); if ($proc.MainWindowHandle -ne 0) { break }; Start-Sleep -Milliseconds 100 } while ([DateTime]::UtcNow -lt $until)
-            if ($proc.MainWindowHandle -eq 0) { throw 'Second launch did not restore window' }
+            while (![DesktopProbe]::IsWindowVisible($window) -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
+            if (![DesktopProbe]::IsWindowVisible($window)) { throw 'Second launch did not restore original HWND' }
             $before=(Get-FileHash "$root\app\OpenDirector.exe").Hash
             $blocked=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
             if (!$blocked.ExitCode -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or $proc.HasExited) { throw 'Live install was not refused safely' }

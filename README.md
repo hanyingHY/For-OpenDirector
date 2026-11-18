@@ -2,7 +2,7 @@
 
 面向 Windows x64 的非官方桌面发行版。安装后从开始菜单打开 **OpenDirector**，无需命令行、Python 环境或本地开发服务器。不是网页快捷方式，也不连接某个托管的 OpenDirector 网站。
 
-**[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-d49bf48d7c211be0d4d9)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44254055271/artifacts/14405461454)** · **[观看 Windows 原生窗口录像](delivery/windows-demo.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
+**[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-63f068cd3c37ca991280)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44254055271/artifacts/14405461454)** · **[观看 Windows 原生窗口录像](delivery/windows-demo.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
 
 登录有仓库维护权限的 GitHub 账号，可从草稿中直接下载 EXE。Actions 备用下载需要登录，解压得到 `OpenDirector-0.1.4-desktop.2-x64-Setup.exe`，双击即可按当前用户安装。用 `Get-FileHash .\OpenDirector-0.1.4-desktop.2-x64-Setup.exe -Algorithm SHA256` 对照 [SHA256SUMS.txt](delivery/SHA256SUMS.txt)。安装程序**未签名**，可能触发 SmartScreen。请核对来源和 SHA-256，不要关闭系统安全防护。无管理员权限要求；安装和首次启动请预留约 2 GB 空间。
 

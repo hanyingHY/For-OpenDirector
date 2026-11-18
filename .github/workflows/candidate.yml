@@ -7,29 +7,35 @@ permissions:
   actions: read
   contents: read
 jobs:
-  verify:
-    runs-on: windows-2022
-    timeout-minutes: 15
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
-      source: ${{ steps.select.outputs.source }}
       build: ${{ steps.select.outputs.build }}
+      source: ${{ steps.select.outputs.source }}
     steps:
       - uses: actions/checkout@v6
       - id: select
-        name: Require a build from this branch and repository
-        shell: pwsh
+        name: Require a successful product build on this branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $candidate = Get-Content delivery/candidate.json -Raw | ConvertFrom-Json
-          $id=[long]$candidate.run
-          $run=gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$id" | ConvertFrom-Json
-          if ($run.head_sha -ne $candidate.source -or $run.head_branch -ne $env:GITHUB_REF_NAME -or $run.head_repository.full_name -ne $env:GITHUB_REPOSITORY -or $run.path -ne '.github/workflows/windows.yml') { throw 'Unrecognized build' }
-          "source=$($run.head_sha)" >> $env:GITHUB_OUTPUT
-          "build=$id" >> $env:GITHUB_OUTPUT
+          id=$(jq -er .run delivery/candidate.json)
+          [[ "$id" =~ ^[0-9]+$ ]]
+          sha=$(jq -er .source delivery/candidate.json)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" | jq -e --arg sha "$sha" --arg ref "$GITHUB_REF_NAME" --arg repo "$GITHUB_REPOSITORY" '.head_sha == $sha and .head_branch == $ref and .head_repository.full_name == $repo and .path == ".github/workflows/windows.yml"'
+          gh run watch "$id" --exit-status --interval 20
+          echo "build=$id" >> "$GITHUB_OUTPUT"
+          echo "source=$sha" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: source
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
-          run-id: ${{ steps.select.outputs.build }}
+          run-id: ${{ needs.source.outputs.build }}
           github-token: ${{ github.token }}
           name: Windows-installer-x64
           path: delivery
@@ -54,17 +60,14 @@ jobs:
             delivery/timeline-export.mp4
             delivery/SHA256SUMS.txt
   agent:
+    needs: source
     runs-on: windows-2022
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v6
-      - name: Read candidate
-        id: read
-        shell: pwsh
-        run: '$id=[long]((Get-Content delivery/candidate.json -Raw | ConvertFrom-Json).run); "run=$id" >> $env:GITHUB_OUTPUT'
       - uses: actions/download-artifact@v4
         with:
-          run-id: ${{ steps.read.outputs.run }}
+          run-id: ${{ needs.source.outputs.build }}
           github-token: ${{ github.token }}
           name: Windows-installer-x64
           path: delivery
@@ -85,7 +88,7 @@ jobs:
   # a release asset, not a 180+ MB Git blob. Never write to upstream or main
   # from a feature branch, and never force-push over concurrent changes.
   retain:
-    needs: [verify, agent]
+    needs: [source, verify, agent]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -98,7 +101,7 @@ jobs:
           path: delivery
       - uses: actions/download-artifact@v4
         with:
-          run-id: ${{ needs.verify.outputs.build }}
+          run-id: ${{ needs.source.outputs.build }}
           github-token: ${{ github.token }}
           name: Windows-installer-x64
           path: delivery
@@ -118,5 +121,6 @@ jobs:
         run: |
           tag=$(jq -er .draftTag delivery/candidate.json)
           [[ "$tag" =~ ^windows-x64-[a-zA-Z0-9.-]+$ ]]
+          test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$(jq -er .source delivery/candidate.json)"
           test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
           gh release upload "$tag" delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-demo.mp4

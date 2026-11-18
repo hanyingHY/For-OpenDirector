@@ -8,7 +8,7 @@ if ($env:OD_PREVIOUS_INSTALLER) { Run-Installer $env:OD_PREVIOUS_INSTALLER } els
 New-Item -ItemType Directory -Force .work | Out-Null
 # Seed a dummy model through the real store, never a user key. Compare exact
 # bytes across upgrade + uninstall, outside the installed resources.
-& "$root\app\python\python.exe" -I -c "from opendirector.installation import data_root; from opendirector.infrastructure.model_configs import ModelConfigs; ModelConfigs(data_root()).save('agent','http://127.0.0.1:1/v1','offline-fixture','fake-test-key')"
+& "$root\app\python\python.exe" -I -c "from opendirector.installation import data_root; from opendirector.infrastructure.model_configs import ModelConfigs; ModelConfigs(data_root()).save('agent','http://127.0.0.1:18919/v1','offline-fixture','fake-test-key')"
 if ($LASTEXITCODE) { throw 'Model fixture failed' }
 $settings=Join-Path $env:OPENDIRECTOR_ROOT '.opendirector\models.json'
 $hash=(Get-FileHash $settings).Hash

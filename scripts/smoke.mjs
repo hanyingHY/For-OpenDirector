@@ -81,6 +81,7 @@ try {
     await assertLocked(project);
     assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
     await page.screenshot({path:'delivery/windows-reopened-en.png'});
+    if(modern){ stage='installed Agent chat'; await (await import('../verification/agent-window.mjs')).agentWindow(page,project); }
     if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }
   }
   process.exit(0);

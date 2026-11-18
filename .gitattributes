@@ -6,3 +6,6 @@ SHA256SUMS.txt text eol=lf
 *.png binary
 *.jpg binary
 *.canvas binary
+
+# Match the LF-only upstream source tarball on Windows checkouts.
+*.patch text eol=lf

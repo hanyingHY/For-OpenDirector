@@ -27,8 +27,8 @@ try {
   if(!r.ok) throw Error();
   const candidates=[];
   for(const row of await r.json()){
-    const m=/^windows-x64-((\d{1,6})\.(\d{1,6})\.(\d{1,6})-desktop\.(\d{1,6}))$/.exec(row.tag_name);
-    if(!m||row.draft||row.prerelease) continue;
+    const m=/^windows-x64-((0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})-desktop\.(0|[1-9]\d{0,5}))$/.exec(row.tag_name);
+    if(!m||row.draft!==false||row.prerelease!==false) continue;
     const name=`OpenDirector-${m[1]}-x64-Setup.exe`, url=`${base}/download/${row.tag_name}/${name}`;
     if(row.assets?.some(a=>a.name===name&&a.browser_download_url===url&&a.state==='uploaded'&&a.size>0))
       candidates.push({url,version:m[1],parts:m.slice(2).map(Number),notes:`${base}/tag/${row.tag_name}`});

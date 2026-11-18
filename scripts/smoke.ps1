@@ -25,7 +25,7 @@ public static class DesktopProbe {
 }
 '@
 function Test-UI($phase) {
-    $modern=(Get-Content "$root\app\VERSION").Trim() -eq '0.1.4-desktop.4'
+    $modern=(Get-Content "$root\app\VERSION").Trim() -notmatch '^0\.1\.4-desktop\.[123]$'
     $occupied=$null
     if ($modern) {
         # This used to prevent OpenDirector from starting. Never accept a
@@ -40,7 +40,7 @@ function Test-UI($phase) {
     } finally { $env:PATH=$hostPath }
     try {
         node scripts/smoke.mjs $phase
-        if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
+        if ($LASTEXITCODE) { Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 12 -ErrorAction SilentlyContinue | ForEach-Object { Write-Output "::warning::$_" }; throw "UI probe failed: $phase" }
         if ($modern) {
             $proc.Refresh()
             # SC_CLOSE is the title-bar X. A bare WM_CLOSE from CloseMainWindow

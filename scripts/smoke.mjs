@@ -28,9 +28,15 @@ try {
   await page.reload();
   const saved=()=>page.locator('.cw-save-status').filter({hasText:zh?'已保存到本机':'Saved on this device'}).waitFor({state:'attached',timeout:60000});
   await saved();
-  const modern=readFileSync(join(app,'VERSION'),'utf8').trim()==='0.1.4-desktop.4';
-  const log=readFileSync(join(process.env.LOCALAPPDATA,'OpenDirector/Desktop/desktop.log'),'utf8');
-  const port=modern ? Array.from(log.matchAll(/Local service ready on loopback port (\d+)/g)).at(-1)[1] : 48765;
+  // Legacy builds need no log on a successful launch. Never expect a
+  // desktop.4 readiness record from the previous installer in an upgrade test.
+  const version=readFileSync(join(app,'VERSION'),'utf8').trim();
+  const modern=!/^0\.1\.4-desktop\.[123]$/.test(version);
+  let port=48765;
+  if(modern){
+    const log=readFileSync(join(process.env.LOCALAPPDATA,'OpenDirector/Desktop/desktop.log'),'utf8');
+    port=Array.from(log.matchAll(/Local service ready on loopback port (\d+)/g)).at(-1)[1];
+  }
   if(modern) { assert.notEqual(+port,48765); assert.match(await page.evaluate(()=>fetch('/__desktop/activity').then(r=>r.text())),/Agent: 0; Generation .*: 0; Tools .*: 0/); }
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/health`,{headers:{'X-OpenDirector-Request':'1'}})).status,403);
   const nodes=page.locator('.react-flow__node');
@@ -42,6 +48,7 @@ try {
       return [r.status,await r.json()];
     },project);
     assert.equal(result[0],409);assert.equal(result[1].code,'project_open_elsewhere');
+    assert.match(result[1].detail,zh?/其他窗口/:/another window/i);
   }
   async function recordWindow(){
     const cdp=await context.newCDPSession(page), frames=[];

@@ -1,5 +1,7 @@
 name: Inspect Windows acceptance failure
 on:
+  push:
+    paths: [".github/workflows/inspect.yml"]
   workflow_dispatch:
     inputs:
       run:
@@ -13,7 +15,7 @@ jobs:
       - name: Summarize the failing assertion in GitHub check annotations
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN: ${{ inputs.run }}
+          RUN: ${{ inputs.run || '44260262509' }}
         run: |
           [[ "$RUN" =~ ^[0-9]+$ ]]
           gh api repos/$GITHUB_REPOSITORY/actions/runs/$RUN | jq -e --arg ref "$GITHUB_REF_NAME" '.head_branch==$ref and (.path==".github/workflows/windows.yml" or .path==".github/workflows/candidate.yml")'

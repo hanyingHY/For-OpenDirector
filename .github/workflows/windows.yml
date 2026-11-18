@@ -1,0 +1,27 @@
+name: Windows x64 desktop
+on: [push, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - name: Assemble original UI, services and Windows runtime
+        run: python scripts/package.py
+      - name: Compile installer
+        run: '& "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /INPUTCHARSET UTF8 desktop\setup.nsi; exit $LASTEXITCODE'
+      - name: Exercise installed application
+        run: ./scripts/smoke.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDirector-Windows-x64
+          path: |
+            delivery/*.exe
+            delivery/*.png

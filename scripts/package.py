@@ -87,6 +87,15 @@ def build():
             target = APP/'media'/Path(name).name
             target.parent.mkdir(exist_ok=True)
             with z.open(entry) as f, target.open('wb') as out: shutil.copyfileobj(f, out)
+    # OpenCode's native skill loader uses rg. Without it a clean installation
+    # attempts a first-run download when loading a skill.
+    rg = 'ripgrep-15.1.0-x86_64-pc-windows-msvc'
+    with zipfile.ZipFile(download(f'https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/{rg}.zip', 'ripgrep.zip',
+                    '124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a')) as z:
+        for name in ('rg.exe', 'LICENSE-MIT', 'UNLICENSE'):
+            dest = APP/'media'/('rg.exe' if name=='rg.exe' else 'ripgrep-'+name)
+            entry, = [item for item in z.namelist() if Path(item).name==name]
+            dest.write_bytes(z.read(entry))
     with zipfile.ZipFile(download('https://github.com/git-for-windows/git/releases/download/v2.56.1.windows.1/MinGit-2.56.1-64-bit.zip', 'mingit.zip',
                     '4a92850b6e917da4fd010669b614b55dccf5b0ec333a534cc4be4700dfefdafd')) as z:
         z.extractall(APP/'git')
@@ -108,6 +117,7 @@ def build():
     subprocess.run([csc,'/nologo','/target:exe','/platform:x64','/codepage:65001','/out:OpenDirector-CLI.exe','/r:System.Security.dll',ROOT/'desktop/Cli.cs'],cwd=APP,check=True)
     subprocess.run([python,'-I','-c','from opendirector_api.main import create_app; from opendirector.installation import web_root; assert (web_root()/"index.html").is_file()'], check=True)
     subprocess.run([bundle/'bin/opencode.exe','--version'], check=True)
+    subprocess.run([APP/'media/rg.exe','--version'], check=True)
     subprocess.run([APP/'media/ffprobe.exe','-version'], check=True)
     assert 'libx264' in subprocess.check_output([APP/'media/ffmpeg.exe','-hide_banner','-encoders'], text=True)
 

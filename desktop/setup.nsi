@@ -2,7 +2,7 @@ Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
 Name "OpenDirector"
-OutFile "..\delivery\OpenDirector-0.1.4-desktop.1-x64-Setup.exe"
+OutFile "..\delivery\OpenDirector-0.1.4-desktop.2-x64-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\OpenDirector"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
@@ -57,7 +57,7 @@ activate:
   CreateShortcut "$SMPROGRAMS\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   CreateShortcut "$DESKTOP\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   WriteRegStr HKCU "${ARP}" "DisplayName" "OpenDirector (Windows x64)"
-  WriteRegStr HKCU "${ARP}" "DisplayVersion" "0.1.4-desktop.1"
+  WriteRegStr HKCU "${ARP}" "DisplayVersion" "0.1.4-desktop.2"
   WriteRegStr HKCU "${ARP}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe" "" "$INSTDIR\app\OpenDirector.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe" "" "$INSTDIR\app\OpenDirector-CLI.exe"

@@ -3,12 +3,14 @@
 $ErrorActionPreference='Stop'
 $base = if ($env:OD_TEST_APP) { $env:OD_TEST_APP } else { (Resolve-Path '.work/app').Path }
 $src = (Get-Item '.work/OpenDirector-*' | Select-Object -First 1).FullName
-$env:PATH = "$base\git\cmd;$base\media;$env:PATH"
+$env:PATH = "$base\git\cmd;$base\media;$env:SystemRoot\System32;$env:SystemRoot;$env:SystemRoot\System32\WindowsPowerShell\v1.0"
 $env:PYTHONUTF8='1'
 $env:OPENDIRECTOR_REAL_CLI='1'
 $env:OPENDIRECTOR_REAL_CLI_WORKER='1'
-# Test tools are added only after NSIS has finished and never enter the installer.
-& "$base\python\python.exe" -m pip install pytest==9.1.1
+# Keep test tools outside the application being packed.
+$env:PYTHONPATH=Join-Path ([IO.Path]::GetTempPath()) 'OD-test-libraries'
+$env:PYTHONDONTWRITEBYTECODE='1'
+& "$base\python\python.exe" -m pip install --no-compile --target $env:PYTHONPATH pytest==9.1.1
 if ($LASTEXITCODE) { throw 'pytest installation failed' }
 # The upstream fixture emits a POSIX single-quoted multiword argument. Use
 # double quotes in the deterministic model response: cmd.exe accepts these too.
@@ -22,7 +24,7 @@ $needle='        count = len(requests)'
 $adjusted=$adjusted.Replace($needle, "        for m in payload['messages']:`n            if m.get('role') == 'tool': print('FIXTURE_TOOL', m.get('tool_call_id'), str(m.get('content',''))[:400], flush=True)`n"+$needle)
 if ($old -eq $adjusted) { throw 'Fixture command changed upstream' }
 [IO.File]::WriteAllText($case, $adjusted, [Text.UTF8Encoding]::new($false))
-$trace=Join-Path ([IO.Path]::GetTempPath()) 'OD-agent-probe'
+$trace=Join-Path ([IO.Path]::GetTempPath()) 'OD Agent 测试'
 Push-Location $src
 try {
   & "$base\python\python.exe" -m pytest --basetemp $trace -q 'tests/test_native_runtime.py::test_real_opencode_default_hello_saves_direct_reply[plain]' 'tests/test_native_runtime.py::test_real_opencode_native_skill_and_gateway_write[False-default]' *> "$base\..\agent-test.txt"

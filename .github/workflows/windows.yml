@@ -18,6 +18,9 @@ jobs:
           node-version: '24.22.1'
       - name: Assemble original UI, services and Windows runtime
         run: python scripts/package.py
+      - name: Native Agent skill and project write (deterministic model)
+        timeout-minutes: 5
+        run: ./scripts/agent-check.ps1
       - name: Compile installer
         id: package
         run: '& "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /INPUTCHARSET UTF8 desktop\setup.nsi; exit $LASTEXITCODE'
@@ -28,15 +31,14 @@ jobs:
           compression-level: 0
       - name: Exercise installed application
         timeout-minutes: 10
+        env:
+          OD_VERIFY_RENDER: '1'
         run: ./scripts/smoke.ps1
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with:
           name: Windows-native-evidence
           path: |
-            delivery/*.png
+            delivery/windows-*.png
             delivery/windows-demo.mp4
-      - name: Native Agent round trip (local model fixture)
-        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
-        timeout-minutes: 5
-        run: ./scripts/agent-check.ps1
+            delivery/timeline-export.mp4

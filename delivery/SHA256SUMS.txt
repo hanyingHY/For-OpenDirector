@@ -1,1 +1,1 @@
-785b7b8b597ec1c31abc77cd1d7292a2525a35c2653daa6a80debd90eb5afd33  OpenDirector-0.1.4-desktop.2-x64-Setup.exe
+808dd282a0be2114cb7ed7bec5130e48f79cae3856f57fa889679267c23dedbb  OpenDirector-0.1.4-desktop.3-x64-Setup.exe

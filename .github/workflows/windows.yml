@@ -17,11 +17,14 @@ jobs:
         run: python scripts/package.py
       - name: Compile installer
         run: '& "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /INPUTCHARSET UTF8 desktop\setup.nsi; exit $LASTEXITCODE'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Windows-installer-x64
+          path: delivery/*.exe
+          compression-level: 0
       - name: Exercise installed application
         run: ./scripts/smoke.ps1
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenDirector-Windows-x64
-          path: |
-            delivery/*.exe
-            delivery/*.png
+          name: Windows-native-screenshots
+          path: delivery/*.png

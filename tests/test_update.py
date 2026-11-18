@@ -48,6 +48,27 @@ class Updates(unittest.TestCase):
         self.files[self.exe]=self.bin
         self.assertEqual(self.new,self.stage())
 
+    def test_cancelled_download_restarts_without_promoting_partial(self):
+        import contextlib
+        class Interrupted(io.BytesIO):
+            def read(self, n=-1):
+                if self.tell(): raise ConnectionResetError('cancelled')
+                return super().read(2)
+        def get(url):
+            if url.endswith('.exe'): return Interrupted(self.bin)
+            if url.endswith(u.MANIFEST): return io.BytesIO(json.dumps(self.m).encode())
+            return contextlib.closing(io.BytesIO(self.files[url if url==u.FEED else u.BUNDLE]))
+        with self.assertRaises(ConnectionResetError):
+            u.stage(self.old,self.cache,get,lambda *a:None)
+        dest=self.cache/self.new
+        self.assertFalse(list(dest.glob('*.part')))
+        self.assertFalse((dest/self.exe).exists())
+        # An abruptly killed process cannot enter a finally block. The next
+        # invocation must also handle remnants of that case.
+        (dest/(self.exe+'.part')).write_bytes(self.bin[:2])
+        self.assertEqual(self.stage(), self.new)
+        self.assertEqual((dest/self.exe).read_bytes(),self.bin)
+
     def test_untrusted_signature_never_fetches_installer(self):
         def bad(*args): raise ValueError('Wrong signer')
         with self.assertRaises(ValueError): self.stage(bad)

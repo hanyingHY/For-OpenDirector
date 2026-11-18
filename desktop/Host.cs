@@ -22,6 +22,7 @@ internal static class Host {
     static readonly TaskCompletionSource<bool> Ready = new TaskCompletionSource<bool>();
     static readonly string Ticket = Path.Combine(State,"session.bin");
     static Process service;
+    static Updates updates;
     static IntPtr job;
     static bool closing;
     static CoreWebView2Environment engine;
@@ -98,15 +99,18 @@ internal static class Host {
                     service.EnableRaisingEvents=true;
                     engine=await CoreWebView2Environment.CreateAsync(null, Path.Combine(State,"WebView2"));
                     await Mount(main,Origin+"/");
+                    if(!closing) updates=new Updates(main, () => { closing=true; main.Close(); }, Write,
+                        p => { if(!AssignProcessToJobObject(job,p.Handle) && !p.HasExited) throw new System.ComponentModel.Win32Exception(); });
                 } catch(WebView2RuntimeNotFoundException) { Fail(new Exception("Install Microsoft Edge WebView2 Evergreen Runtime (x64), then reopen. / 请安装微软 WebView2 Evergreen x64 运行时后重试。")); }
                   catch(Exception ex) { Fail(ex); } };
                 main.FormClosing += (s,e) => {
+                    if(!closing && updates!=null && updates.Applying) { e.Cancel=true; return; }
                     if(!closing && e.CloseReason==CloseReason.UserClosing && MessageBox.Show(main,"Closing stops exports and running tasks. Close?\n关闭会中断导出和运行中的任务，确定关闭？","OpenDirector",MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes) { e.Cancel=true; return; }
                     closing=true;
                 };
                 Application.Run(main);
             } catch(Exception e) { Error(e); }
-            finally { closing=true; try { if(service!=null && !service.HasExited) { service.StandardInput.Close(); service.WaitForExit(5000); } } catch(InvalidOperationException) {} finally { if(job!=IntPtr.Zero) CloseHandle(job); try { File.Delete(Ticket); } catch(IOException) {} } }
+            finally { closing=true; if(updates!=null) updates.Dispose(); try { if(service!=null && !service.HasExited) { service.StandardInput.Close(); service.WaitForExit(5000); } } catch(InvalidOperationException) {} finally { if(job!=IntPtr.Zero) CloseHandle(job); try { File.Delete(Ticket); } catch(IOException) {} } }
         }
     }
 }

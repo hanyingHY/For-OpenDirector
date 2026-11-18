@@ -53,7 +53,7 @@ def build():
     (WORK / 'constraints.txt').write_text('\n'.join(pins))
     import tomllib
     deps = tomllib.loads((src / 'pyproject.toml').read_text())['project']['dependencies']
-    subprocess.run([python, '-m', 'pip', 'install', '--only-binary=:all:', '--no-compile', '-c', WORK / 'constraints.txt', *deps], check=True)
+    subprocess.run([python, '-m', 'pip', 'install', '--only-binary=:all:', '--no-compile', '-c', WORK / 'constraints.txt', 'sigstore==4.5.1', *deps], check=True)
     site = runtime / 'Lib/site-packages'
     core = site / 'opendirector'
     shutil.copytree(src / 'packages/core/src/opendirector', core)
@@ -106,13 +106,14 @@ def build():
             entry = next((x for x in z.namelist() if x.lower()==name.lower()), None)
             if not entry: raise RuntimeError('Missing '+name+': '+str([x for x in z.namelist() if x.endswith('.dll') or 'license' in x.lower()][:40]))
             target.write_bytes(z.read(entry))
-    shutil.copy2(ROOT/'desktop/service.py', APP)
+    for name in ('update.py','VERSION','service.py'):
+        shutil.copy2(ROOT/'desktop'/name, APP)
     shutil.copy2(ROOT/'desktop/cli_entry.py', APP)
     for name in ('LICENSE', 'NOTICE', 'package-lock.json'): shutil.copy2(src/name, APP/name)
     csc = Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
     result = subprocess.run([csc, '/nologo','/target:winexe','/platform:x64','/codepage:65001', '/out:OpenDirector.exe',
                     '/r:System.Security.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll', '/r:Microsoft.Web.WebView2.Core.dll',
-                    '/r:Microsoft.Web.WebView2.WinForms.dll', ROOT/'desktop/Host.cs'], cwd=APP, capture_output=True, text=True)
+                    '/r:Microsoft.Web.WebView2.WinForms.dll', ROOT/'desktop/Host.cs',ROOT/'desktop/Updates.cs'], cwd=APP, capture_output=True, text=True)
     if result.returncode: raise RuntimeError(result.stdout + result.stderr)
     subprocess.run([csc,'/nologo','/target:exe','/platform:x64','/codepage:65001','/out:OpenDirector-CLI.exe','/r:System.Security.dll',ROOT/'desktop/Cli.cs'],cwd=APP,check=True)
     subprocess.run([python,'-I','-c','from opendirector_api.main import create_app; from opendirector.installation import web_root; assert (web_root()/"index.html").is_file()'], check=True)

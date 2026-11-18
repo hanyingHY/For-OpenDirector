@@ -43,6 +43,9 @@ function Test-UI($phase) {
             $until=[DateTime]::UtcNow.AddSeconds(5)
             do { $proc.Refresh(); if ($proc.MainWindowHandle -ne 0) { break }; Start-Sleep -Milliseconds 100 } while ([DateTime]::UtcNow -lt $until)
             if ($proc.MainWindowHandle -eq 0) { throw 'Second launch did not restore window' }
+            $before=(Get-FileHash "$root\app\OpenDirector.exe").Hash
+            $blocked=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
+            if (!$blocked.ExitCode -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or $proc.HasExited) { throw 'Live install was not refused safely' }
             Write-Output 'PASS: occupied legacy port, authenticated desktop, hide and single-instance restore'
         }
     } finally {
@@ -56,6 +59,26 @@ Run-Installer
 # Upstream intentionally retains the last writer's lease for 60s on crash.
 Start-Sleep -Seconds 61
 Test-UI 'reopen'
+# Broken user-selected root: startup must fail with actionable native diagnostics,
+# not open an empty canvas or destroy the inaccessible workspace.
+$validRoot=$env:OPENDIRECTOR_ROOT
+$env:OPENDIRECTOR_ROOT=(New-TemporaryFile).FullName
+try {
+    $bad=Start-Process "$root\app\OpenDirector.exe" -PassThru
+    $until=[DateTime]::UtcNow.AddSeconds(75)
+    do {
+        $message=(Get-Content "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -Tail 15) -match 'Local service did not start.*服务启动失败'
+        if ($message) { break }; Start-Sleep -Milliseconds 300
+    } while ([DateTime]::UtcNow -lt $until)
+    if (!$message) { throw 'Missing bilingual startup failure diagnostic' }
+} finally {
+    if ($bad -and !$bad.HasExited) { $bad.Kill(); $bad.WaitForExit() }
+    Remove-Item -LiteralPath $env:OPENDIRECTOR_ROOT; $env:OPENDIRECTOR_ROOT=$validRoot
+}
+# An independent shell registration installed by another application is not ours.
+$cmd='HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector-CLI.exe'
+New-Item $cmd -Force | Out-Null
+Set-Item $cmd -Value 'C:\independent\OpenDirector-CLI.exe'
 $projectFiles=@(Get-ChildItem $env:OPENDIRECTOR_ROOT -File -Recurse)
 if (!$projectFiles.Count) { throw 'No project files to preserve' }
 Start-Process "$root\Uninstall.exe" -ArgumentList '/S',("_?="+$root) -Wait
@@ -63,3 +86,6 @@ if (Test-Path "$root\app\OpenDirector.exe") { throw 'Uninstall failed' }
 foreach ($f in $projectFiles) { if (!(Test-Path $f.FullName)) { throw 'Uninstall removed project data' } }
 
 if ((Get-FileHash $settings).Hash -ne $hash) { throw 'Upgrade or uninstall changed credentials' }
+
+if ((Get-Item $cmd).GetValue('') -ne 'C:\independent\OpenDirector-CLI.exe') { throw 'Uninstall removed independent CLI' }
+Remove-Item $cmd

@@ -43,12 +43,22 @@ try {
     },project);
     assert.equal(result[0],409);assert.equal(result[1].code,'project_open_elsewhere');
   }
-  if(zh) {
-    stage='capture';
+  async function recordWindow(){
     const cdp=await context.newCDPSession(page), frames=[];
-    const folder=resolve('.work/frames'); mkdirSync(folder,{recursive:true});
+    const folder=resolve('.work/frames-'+phase); mkdirSync(folder,{recursive:true});
     cdp.on('Page.screencastFrame',event=>{const f=join(folder,`${frames.length}.jpg`);writeFileSync(f,Buffer.from(event.data,'base64'));frames.push([f,Date.now()]);cdp.send('Page.screencastFrameAck',{sessionId:event.sessionId}).catch(()=>{});});
     await cdp.send('Page.startScreencast',{format:'jpeg',quality:85,maxWidth:1440,maxHeight:900});
+    return async output=>{
+      await delay(900); await cdp.send('Page.stopScreencast');
+      assert(frames.length>1,'No captured WebView2 frames');
+      const list=frames.map(([f,t],i)=>`file '${f.replaceAll('\\','/')}'\nduration ${Math.min(2,((frames[i+1]?.[1]??(t+1200))-t)/1000)}`).join('\n')+`\nfile '${frames.at(-1)[0].replaceAll('\\','/')}'\n`;
+      writeFileSync(join(folder,'frames.txt'),list);
+      execFileSync(join(app,'media/ffmpeg.exe'),['-loglevel','error','-y','-safe','0','-f','concat','-i',join(folder,'frames.txt'),'-vf','scale=1440:900,fps=24,format=yuv420p','-c:v','libx264','-movflags','+faststart',output]);
+    };
+  }
+  if(zh) {
+    stage='capture';
+    const finishCapture=await recordWindow();
     stage='create project';
     await page.getByRole('button',{name:'切换项目',exact:true}).click();
     await page.getByRole('menuitem',{name:'新建画布项目',exact:true}).click();
@@ -69,11 +79,7 @@ try {
     await download.saveAs('.work/export.canvas'); assert.equal(readFileSync('.work/export.canvas').subarray(0,2).toString(),'PK');
     const project=projects().find(p=>p.name==='Blue Hour · 轨道晨光'); assert(project); await assertLocked(project.id);
     writeFileSync('.work/check.json',JSON.stringify({project:project.id,nodeId}));
-    await delay(900); await cdp.send('Page.stopScreencast');
-    assert(frames.length>1,'No captured WebView2 frames');
-    const list=frames.map(([f,t],i)=>`file '${f.replaceAll('\\','/')}'\nduration ${Math.min(2,((frames[i+1]?.[1]??(t+1200))-t)/1000)}`).join('\n')+`\nfile '${frames.at(-1)[0].replaceAll('\\','/')}'\n`;
-    writeFileSync(join(folder,'frames.txt'),list);
-    execFileSync(join(app,'media/ffmpeg.exe'),['-loglevel','error','-y','-safe','0','-f','concat','-i',join(folder,'frames.txt'),'-vf','scale=1440:900,fps=24,format=yuv420p','-c:v','libx264','-movflags','+faststart','delivery/windows-demo.mp4']);
+    await finishCapture('delivery/windows-demo.mp4');
   } else {
     stage='verify project after reinstall';
     const {project,nodeId}=JSON.parse(readFileSync('.work/check.json'));
@@ -81,8 +87,10 @@ try {
     await assertLocked(project);
     assert.equal(await nodes.count(),2);assert(projects().some(p=>p.id===project));
     await page.screenshot({path:'delivery/windows-reopened-en.png'});
+    const finishCapture=modern?await recordWindow():null;
     if(modern){ stage='installed Agent chat'; await (await import('../verification/agent-window.mjs')).agentWindow(page,project); }
     if(process.env.OD_VERIFY_RENDER==='1') { stage='render MP4'; await (await import('../verification/render.mjs')).renderCheck(page,app); }
+    if(finishCapture) await finishCapture('delivery/windows-workflow.mp4');
   }
   process.exit(0);
 } catch(e) {

@@ -33,7 +33,8 @@ export async function agentWindow(page, project){
     const snapshot=await page.evaluate(async id=>(await fetch('/api/creation/projects/'+id,{headers:{'X-OpenDirector-Request':'1'}})).json(),project);
     assert(snapshot.assets.some(a=>a.id===receipt.assetId&&a.name==='desktop-plan.md'));
     await page.screenshot({path:'delivery/windows-agent-en.png'});
-    await page.locator('.cw-chat-button').click();
+    await editor.press('Escape');
+    await page.locator('#canvas-assistant').waitFor({state:'hidden'});
     console.log('PASS: installed chat send → active Agent detected → real CLI write → saved reply and verified project asset');
   }catch(e){throw fixtureError??e;}finally{server.close(); server.closeAllConnections();}
 }

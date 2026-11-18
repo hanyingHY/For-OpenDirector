@@ -13,6 +13,7 @@ jobs:
     outputs:
       build: ${{ steps.select.outputs.build }}
       source: ${{ steps.select.outputs.source }}
+      previous: ${{ steps.select.outputs.previous }}
     steps:
       - uses: actions/checkout@v6
       - id: select
@@ -27,6 +28,7 @@ jobs:
           gh run watch "$id" --exit-status --interval 20
           echo "build=$id" >> "$GITHUB_OUTPUT"
           echo "source=$sha" >> "$GITHUB_OUTPUT"
+          echo "previous=$(jq -r '.previous.run // empty' delivery/candidate.json)" >> "$GITHUB_OUTPUT"
   verify:
     needs: source
     runs-on: windows-2022
@@ -39,7 +41,22 @@ jobs:
           github-token: ${{ github.token }}
           name: Windows-installer-x64
           path: delivery
-      - name: Install → edit → export → restart → reinstall → render → uninstall
+      - uses: actions/download-artifact@v4
+        if: needs.source.outputs.previous != ''
+        with:
+          run-id: ${{ needs.source.outputs.previous }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: .work/previous
+      - name: Identify trusted previous installer
+        if: needs.source.outputs.previous != ''
+        shell: pwsh
+        run: |
+          $old = Get-Item .work/previous/*-Setup.exe
+          $expected = (Get-Content delivery/candidate.json -Raw | ConvertFrom-Json).previous.sha256
+          if ((Get-FileHash $old).Hash -ne $expected) { throw 'Unexpected previous installer' }
+          "OD_PREVIOUS_INSTALLER=$($old.FullName)" >> $env:GITHUB_ENV
+      - name: Install → edit → export → restart → upgrade → render → uninstall
         env:
           OD_VERIFY_RENDER: '1'
         run: ./scripts/smoke.ps1
@@ -105,6 +122,12 @@ jobs:
           github-token: ${{ github.token }}
           name: Windows-installer-x64
           path: delivery
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-update-metadata
+          path: delivery
       - name: Preserve Windows capture and checksum on the tested working branch
         run: |
           cd delivery && sha256sum --check SHA256SUMS.txt && cd ..
@@ -123,4 +146,6 @@ jobs:
           [[ "$tag" =~ ^windows-x64-[a-zA-Z0-9.-]+$ ]]
           test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$(jq -er .source delivery/candidate.json)"
           test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
-          gh release upload "$tag" delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-demo.mp4
+          test "$tag" = "windows-x64-$(jq -er .version delivery/windows-update.json)"
+          test "$(jq -er .sha256 delivery/windows-update.json)" = "$(cut -d ' ' -f1 delivery/SHA256SUMS.txt)"
+          gh release upload "$tag" delivery/windows-update.json delivery/windows-update.json.sigstore.json delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-demo.mp4

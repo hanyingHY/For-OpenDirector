@@ -1,5 +1,9 @@
 {
-  "run": 44254055271,
-  "source": "f1c86b46b5cec2004967790836e4fa8b3bf54474",
-  "draftTag": "windows-x64-0.1.4-desktop.2"
+  "run": 44256464692,
+  "source": "42af2dd3a2dbb4f0ad692beddb2370ab11a6b7c7",
+  "draftTag": "windows-x64-0.1.4-desktop.3",
+  "previous": {
+    "run": 44254055271,
+    "sha256": "785b7b8b597ec1c31abc77cd1d7292a2525a35c2653daa6a80debd90eb5afd33"
+  }
 }

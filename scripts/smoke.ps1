@@ -3,8 +3,8 @@ $installer = (Get-ChildItem delivery/*.exe).FullName
 $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
 $tempRoot=[IO.Path]::GetTempPath()
 $env:OPENDIRECTOR_ROOT = Join-Path $tempRoot 'OpenDirector 测试 projects'
-function Run-Installer { if ((Start-Process $installer -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) { throw 'Silent installation failed' } }
-Run-Installer
+function Run-Installer($package=$installer) { if ((Start-Process $package -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) { throw 'Silent installation failed' } }
+if ($env:OD_PREVIOUS_INSTALLER) { Run-Installer $env:OD_PREVIOUS_INSTALLER } else { Run-Installer }
 New-Item -ItemType Directory -Force .work | Out-Null
 # Seed a dummy model through the real store, never a user key. Compare exact
 # bytes across upgrade + uninstall, outside the installed resources.

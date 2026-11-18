@@ -4,7 +4,7 @@
 
 | 工作项 | Windows 处理方式 | 验证方法 / 不包含什么 |
 | --- | --- | --- |
-| [D1 桌面应用](https://github.com/ThinkFlowLab/OpenDirector/issues/363) | WebView2 加载由上游锁文件构建的完整 UI，而不是复刻界面或连接托管站点。Windows 原生宿主管理打包的 Python、Agent 和媒体进程；不用提案中的 Electron，不提供 JS → 原生执行桥。 | `scripts/package.py` 执行打包解释器的 import、Agent PE、rg 和 FFmpeg 检查；`scripts/agent-check.ps1` 用真实 Agent 加载内置 skill 并写入工程。 |
+| [D1 桌面应用](https://github.com/ThinkFlowLab/OpenDirector/issues/363) | WebView2 加载由上游锁文件构建的完整 UI，而不是复刻界面或连接托管站点。Windows 原生宿主管理打包的 Python、Agent 和媒体进程；非交互的 Git 初始化不会继承正在等待关闭信号的宿主管道。实际窗口中发送首条消息不再卡在“思考中”。不用提案中的 Electron，不提供 JS → 原生执行桥。 | `scripts/package.py` 执行打包解释器的 import、Agent PE、rg 和 FFmpeg 检查；`scripts/agent-check.ps1` 用真实 Agent 加载内置 skill 并写入工程。 |
 | D1 · 连接与同一工程 | 服务绑定 `127.0.0.1:0` 后通过私有管道报告端口。WebView2 内部把旧的浏览器 origin 映射到本次监听器，保留 localStorage / IndexedDB 命名空间。宿主用一次性随机挑战验证路由后才给本 origin 的请求附加凭据。CLI 从当前用户 DPAPI 票据读取本次端口并验证服务。 | `tests/test_transport.py` 检查认证、Host、Origin 和挑战不能充当凭据。`scripts/smoke.ps1` 占用旧端口；`scripts/smoke.mjs` 验证未认证请求被拒、不同编辑会话获得 409、CLI 读到同一 ID、升级前后浏览器标记仍在。 |
 | D1 · 退出与恢复 | 主窗口 × 隐藏到托盘；再次启动或双击托盘恢复原窗口。托盘「退出」及「安装并重启」读取后端 Agent / 生成 / 工具运行数，并检查各窗口上游导出进度。检查失败显示状态未知；默认不退出。正常停机释放本次窗口的租约；崩溃用上游租约过期机制，绝不强占别人正在编辑的工程。 | 隐藏 ≠ 无窗口渲染服务；导出需要存活的渲染器，后台可能变慢。退出中断本地工作，不等于取消服务商已接单的远程任务。统计是确认前的快照，不承诺检测未来开始的任务。 |
 | D1 · 命令 | 可直接调用打包的 CLI；托盘可选择注册 / 修复 / 移除 `OpenDirector-CLI.exe` 的当前用户 **App Paths**。可从 Win+R / ShellExecute 发现；不会安装同名全局 `opendirector`，也不更改 PATH。 | `OpenDirector-CLI.exe --help` 是上游 CLI 帮助。不同路径已占用注册名时不覆盖；卸载只删除匹配本安装路径的 CLI 注册。 |

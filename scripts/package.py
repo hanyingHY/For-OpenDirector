@@ -71,6 +71,11 @@ def build():
         text = file.read_text(encoding='utf8')
         if text.count(old) != 1: raise ValueError(f'Unexpected desktop integration point in {file.name}')
         file.write_text(text.replace(old, new), encoding='utf8')
+    # On a desktop launch, stdin is the private shutdown pipe, not a console.
+    # MinGit's launcher can wait indefinitely for EOF when initializing the
+    # turn workspace. Keep stdin available to the service, never to git init.
+    replace_once(core/'agent/native.py', "'git', 'init', '--quiet', '--template=', cwd=work,",
+        "'git', 'init', '--quiet', '--template=', cwd=work, stdin=asyncio.subprocess.DEVNULL,")
     replace_once(api/'agent.py', '    return router',
         '    router.count_active = lambda: sum(not task.done() for _, task, _ in active.values())\n    return router')
     replace_once(api/'main.py', '    app.include_router(agent_routes(creation_projects, creation_generation, model_configs, chat_provider))',

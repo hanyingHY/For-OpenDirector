@@ -32,7 +32,7 @@ jobs:
   verify:
     needs: source
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -60,9 +60,22 @@ jobs:
         env:
           OD_VERIFY_RENDER: '1'
         run: ./scripts/smoke.ps1
+      - uses: actions/download-artifact@v4
+        if: needs.source.outputs.previous != ''
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-update-metadata
+          path: delivery
+      - name: Prior installed updater authorizes the candidate and preserves project identity
+        if: needs.source.outputs.previous != ''
+        run: ./verification/previous-update.ps1
       - name: Identify tested bytes
         shell: pwsh
         run: |
+          foreach ($name in 'windows-canvas.png','windows-reopened-en.png','windows-agent-en.png','windows-timeline.png','windows-demo.mp4','windows-workflow.mp4','timeline-export.mp4') {
+            if ((Get-Item "delivery/$name" -ErrorAction Stop).Length -eq 0) { throw "Missing fresh evidence: $name" }
+          }
           $file=Get-Item delivery/*-Setup.exe
           $hash=(Get-FileHash $file).Hash.ToLowerInvariant()
           "$hash  $($file.Name)" | Out-File delivery/SHA256SUMS.txt -Encoding ascii

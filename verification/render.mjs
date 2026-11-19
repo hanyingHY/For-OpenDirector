@@ -10,13 +10,17 @@ export async function renderCheck(page, app) {
   // desktop.8 regression (RFC #362): an empty timeline can still reach the toolbar
   // export; the failed card must be closable, not only retryable, and must vanish
   // without leaving an orphan video behind.
-  await page.locator('.cw-selection-toolbar button[data-action="output"]').click();
+  await page.locator('.cw-selection-toolbar').getByRole('button',{name:'Output video',exact:true}).click();
   const stuck=page.locator('.cw-timeline-pending');
   await stuck.locator('[role="alert"]').waitFor();
   assert.match(await stuck.locator('[role="alert"]').innerText(),/Add media to the timeline first/);
   await page.screenshot({path:'delivery/windows-timeline-failed.png'});
   await stuck.getByRole('button',{name:'Dismiss',exact:true}).click();
   await stuck.waitFor({state:'detached'});
+  // The failed run pans the camera to the output slot; refit the document before
+  // touching node chrome again, since a ReactFlow pan is not DOM-scrollable.
+  await page.locator('.cw-workspace').focus();
+  await page.keyboard.press('Shift+1');
   if (!(await node.count())) await page.locator('.react-flow__node').last().click();
   await node.locator('.cw-node-title').click({button:'right'});
   await page.getByRole('menuitem',{name:'Open editor',exact:true}).click();

@@ -67,6 +67,12 @@ try {
     await dismiss.click();
     await card.waitFor({ state: "detached" });
   };
+  // A failed run pans the camera to the output slot; a ReactFlow pan is not
+  // DOM-scrollable, so refit the document before touching node chrome again.
+  const refit = async () => {
+    await page.locator(".cw-workspace").focus();
+    await page.keyboard.press("Shift+1");
+  };
 
   await failAndDismiss();
   assert.equal((await snapshot()).canvasItems.filter((item) => item.kind === "video").length, 0,
@@ -74,6 +80,7 @@ try {
 
   // The hook state is fully released: a second export still reaches the failure
   // card (regression guard against a stuck `active`/`pending` ref), and closes again.
+  await refit();
   await page.locator(`.react-flow__node[data-id="${fixture.item}"]`).click();
   await failAndDismiss();
   assert.equal((await snapshot()).canvasItems.filter((item) => item.kind === "video").length, 0);

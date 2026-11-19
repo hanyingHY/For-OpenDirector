@@ -31,3 +31,18 @@ desktop.6 新增：画布自动创建节点会避让已占位置（64 单位间�
 - [原生 Windows 构建、安装测试、更新清单签名及安装重启](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032)；[同一份安装器的独立跨版本验收](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44299900134)。构建源码 `049daf0`；实际安装包以 `delivery/SHA256SUMS.txt` 指纹为准，不用 Git 提交号代替文件校验。
 - [旧版画布重叠与自动排列修复](delivery/canvas-debug.mp4) → [desktop.6 完整 Windows 工作流](delivery/studio-walkthrough.mp4) → [真正导出的 MP4](delivery/timeline-export.mp4)。演示为真实窗口截图帧；录像压缩了没有界面变化的等待时间，不能用来比较推理速度。
 - 本轮有原生运行记录的异常路径包括并行安装竞争、上次目录交换中断且重试暂存失败、未认证访问、第二写入会话、旧端口已占用、宿主被终止、错误数据目录和运行时拒绝覆盖安装。未把每一个托盘菜单项的手动点击、每一种中断时机或任意第三方模型/编码器算作自动化通过。量产前仍应在正式 Win10/Win11 机型上核对托盘授权与拒绝、真实服务商恢复、SmartScreen 和系统编码器。
+
+## desktop.7：P1–P7 回归记录
+
+同一份 [Windows 构建及验收](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785) 在 Windows Server 2022 x64 上从已核验 SHA-256 的 desktop.6 创建项目，再用 desktop.7 覆盖安装和重开；单独的交接作业验证带真实签名的测试更新可以等待退出并重启，但不代表 desktop.6 已信任此候选分支的签名。
+
+| 问题 | 验收结果 |
+| --- | --- |
+| P1 | 外部 XDG 数据目录放入缺少 `session` 表的 SQLite 数据库；安装版内置技能目录返回 200，真实 Agent 在确定性模型响应下通过 CLI 写入项目；外部数据库字节不变。 |
+| P2 | 应用仍运行时直接调用 `Uninstall.exe /S`，退出码 2，已安装文件和注册保留。退出后静默卸载成功，工程、模型配置和独立 CLI 注册保留。 |
+| P3 | 无效项目根触发真实 Python 异常；日志中能匹配原始中文文件名，并提供双语启动错误。 |
+| P4 | 自动校验四个 PE 的产品名、描述与四段文件版本，以及 ARP 的显示版本、发布者、图标路径、安装大小。 |
+| P5 | 本地测试覆盖跨启动间隔、手动检查、模拟 HTTP 403 `Retry-After` 和损坏状态文件；不需要故意用完 GitHub 的共享限额。 |
+| P6–P7 | README 给出 `pwsh`、固定 Playwright 版本和验收命令；CI 归档摘要与源代码重建产物分别校验。 |
+
+[最新窗口录像](delivery/desktop.7-windows-workflow.mp4) 与 [导出文件](delivery/desktop.7-timeline-export.mp4) 对应 [归档 EXE 校验和](delivery/SHA256SUMS.txt)。未覆盖所有 Win11 中文客户端的硬件/GPU 组合、真实第三方账号及上游每一个可选集成。

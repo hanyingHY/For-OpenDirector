@@ -4,6 +4,9 @@
 
 **[desktop.7 Windows x64 安装包（维护者草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-77520365e069afb1c1a1)** · **[desktop.7 Actions 安装包（ZIP 内含 EXE）](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785/artifacts/14495997765)** · [desktop.7 Windows 验收记录](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785)
 
+
+**[desktop.7 实机窗口录像](delivery/desktop.7-windows-workflow.mp4)** · [六个画布入口实录](delivery/desktop.7-windows-sidebar.mp4) · [应用实际导出的 H.264 MP4](delivery/desktop.7-timeline-export.mp4) · [安装包 SHA-256](delivery/SHA256SUMS.txt)。[构建、跨版覆盖安装及签名交接测试](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785) 已通过，录像与 EXE 从同一次构建保留。录像中的 AI 服务响应来自本地测试模型；OpenCode、项目写入及渲染是真实执行。EXE 未经 Authenticode 签名。
+
 ### 上一版 desktop.6 归档
 
 **[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-2dd2f0a139431e481607)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032/artifacts/14424746913)** · **[画布重叠复现与修复](delivery/canvas-debug.mp4)** · **[Windows 全流程实录](delivery/studio-walkthrough.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
@@ -24,7 +27,7 @@
 | --- | --- |
 | 目标 | Windows 11 x64 / Windows 10 22H2 x64，.NET Framework 4.8+ 及 Evergreen WebView2；不含 Windows ARM64、x86、macOS、Linux |
 | 实测系统 | GitHub-hosted **Windows Server 2022 x64**。这是原生 Windows 构建和 GUI 测试，不是 Win10、Win11 各硬件机型的认证 |
-| 打包 | 每用户 NSIS 安装 / 卸载；开始菜单、桌面快捷方式、App Paths；桌面版 `0.1.4-desktop.6`，编译 UI 前额外应用 `patches/canvas-placement.patch`（仅影响自动创建的节点位置，不改动存储格式、渲染和模型业务规则） |
+| 打包 | 每用户 NSIS 安装 / 卸载；开始菜单、桌面快捷方式、App Paths；桌面版 `0.1.4-desktop.7`，编译 UI 前额外应用 `patches/canvas-placement.patch`（仅影响自动创建的节点位置，不改动存储格式、渲染和模型业务规则） |
 | 随应用安装 | CPython 3.12.16、上游 Python 依赖、OpenCode 1.19.5 x64 baseline、MinGit 2.56.1、ripgrep 15.1.0、FFmpeg/ffprobe 9.0.2（含 libx264）、编译后的 Web UI |
 | 系统组件 | WebView2 SDK 1.0.2903.40；实际浏览器由系统 Evergreen Runtime 提供并更新。若被移除，请从[微软](https://developer.microsoft.com/microsoft-edge/webview2/)安装 x64 运行时。未捆绑完整浏览器或模型权重 |
 
@@ -101,7 +104,7 @@ pwsh -NoProfile -File scripts/agent-check.ps1
 ### 维护者：发布更新到稳定频道
 
 1. 递增 `desktop/VERSION`（格式 `X.Y.Z-desktop.N`），在授权分支构建。客户端只信任本仓库 `.github/workflows/windows.yml` 在 `main` 或当前桌面工作分支的 Sigstore 签名，验证不依赖维护者向用户分发密钥。
-2. Windows 测试通过后，单独的 OIDC 签名作业生成 `windows-update.json` 和 `windows-update.json.sigstore.json`；Windows handoff 测试用真实签名和 EXE 验证重启流程。候选验收工作流会把它们与同一 EXE 放进草稿。
+2. Windows 测试通过后，单独的 OIDC 签名作业生成 `windows-update.json` 和 `windows-update.json.sigstore.json`；Windows handoff 测试用真实签名和 EXE 验证重启流程。交付工作流会把它们与同一 EXE 放进草稿。
 3. **仅当决定对用户推送时**，将标签 `windows-x64-X.Y.Z-desktop.N` 的草稿发布为普通 Release（不要标记 pre-release）。发布前核对三份资产齐全。不要替换既有版本；修复应递增版本号。过期信任根等验证失败时不会退回未验证安装，应通过可信手动渠道重新引导安装。
 
 ## 验证
@@ -112,6 +115,6 @@ pwsh -NoProfile -File scripts/agent-check.ps1
 - `verification/previous-update.ps1` 使用**已安装的上一版更新器和它自带的信任根**，验证草稿清单、启动新版安装器、等待旧宿主退出，再从自动重启的应用读取同一工程和密钥文件。它只替换发布资产的网络传输，不是公开推送。
 - `scripts/smoke.ps1` **仅在空白测试账号 / VM 中运行**：会安装、终止和卸载应用。`scripts/agent-check.ps1` 运行上游包含真实 OpenCode 子进程的回归，用确定性的本地模型响应，既不伪造 Agent 程序也不发送付费请求。
 - [Five-lane CI](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297885250)：前端、后端、助手、语音和画布几何回归；浏览器通过率不等同于 Windows 窗口验收，两者结论须分别看。
-- `delivery/candidate.json` 指向当前分支上要复验的既有构建。候选工件通过 GUI 验收后才回存小型证据，并把原始 EXE 附加到该提交对应的维护者 **draft release**（须事先用 `gh release create <tag> --draft --target <完整构建提交>` 创建，标签写入 `draftTag`），不会向上游推送或公开发布。
+- `delivery/candidate.json` 指向当前分支已执行跨版本安装验收的构建。交付工作流检查整条 Windows 流水线状态与产物摘要，回存小型证据，并把原始 EXE 附加到该提交对应的维护者 **draft release**（须事先用 `gh release create <tag> --draft --target <完整构建提交>` 创建，标签写入 `draftTag`），不会向上游推送或公开发布。
 
 本仓库只处理 [RFC #362](https://github.com/ThinkFlowLab/OpenDirector/issues/362) 的 Windows 范围。生产 Authenticode 签名、真实付费模型与各 Windows 客户端 / GPU 组合仍需单独验收。

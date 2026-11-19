@@ -1,7 +1,7 @@
 ﻿#Requires -Version 7.0
 $ErrorActionPreference='Stop'
 trap { Write-Output ("::error::Smoke line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber,$_.Exception.Message); exit 1 }
-Get-ChildItem -Path delivery/windows-*.png,delivery/windows-*.mp4,delivery/timeline-export.mp4,delivery/SHA256SUMS.txt -ErrorAction SilentlyContinue | Remove-Item
+Get-ChildItem -Path delivery/windows-*.png,delivery/windows-*.mp4,delivery/timeline-export.mp4 -ErrorAction SilentlyContinue | Remove-Item
 $installer = (Get-ChildItem delivery/*.exe).FullName
 $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
 $tempRoot=[IO.Path]::GetTempPath()
@@ -135,7 +135,7 @@ Test-UI 'reopen'
 if ((Get-FileHash $fakeDb).Hash -ne $dbHash) { throw 'Bundled Agent modified external OpenCode database' }
 $privateDb=Join-Path $env:LOCALAPPDATA 'OpenDirector\Desktop\agent-runtime\opencode-v1\data\opencode\opencode.db'
 if (!(Test-Path $privateDb)) { throw 'Missing private Agent database' }
-Write-Output 'PASS: skills and native turn succeeded with incompatible inherited XDG data; external database unmodified' 
+Write-Output 'PASS: skills and native turn succeeded with incompatible inherited XDG data; external database unmodified'
 # Broken user-selected root: startup must fail with actionable native diagnostics,
 # not open an empty canvas or destroy the inaccessible workspace.
 $validRoot=$env:OPENDIRECTOR_ROOT
@@ -161,6 +161,9 @@ Set-Item $cmd -Value 'C:\independent\OpenDirector-CLI.exe'
 $projectFiles=@(Get-ChildItem $env:OPENDIRECTOR_ROOT -File -Recurse)
 if (!$projectFiles.Count) { throw 'No project files to preserve' }
 $uninstall=Start-Process "$root\Uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+# The launcher has exited; its disposable child can now remove the image.
+$until=[DateTime]::UtcNow.AddSeconds(20)
+while ((Test-Path "$root\Uninstall.exe") -and [DateTime]::UtcNow -lt $until) { Start-Sleep -Milliseconds 100 }
 if ($uninstall.ExitCode -ne 0 -or (Test-Path "$root\app\OpenDirector.exe") -or (Test-Path "$root\Uninstall.exe")) { throw "Silent uninstall failed ($($uninstall.ExitCode))" }
 foreach ($f in $projectFiles) { if (!(Test-Path $f.FullName)) { throw 'Uninstall removed project data' } }
 

@@ -89,3 +89,30 @@ class Updates(unittest.TestCase):
     def test_no_downgrade_even_on_handoff(self):
         for ver in [self.old,self.new,'../bad']:
             with self.assertRaises(ValueError): u.handoff(self.new,self.cache,ver,1)
+
+    def test_automatic_checks_are_throttled_across_launches(self):
+        def get(url):
+            self.calls.append(url)
+            return io.BytesIO(b'[]')
+        self.assertEqual('NONE', u.check(self.old, self.cache, now=100, open_url=get))
+        self.assertEqual('SKIPPED', u.check(self.old, self.cache, now=101, open_url=get))
+        self.assertEqual([u.FEED], self.calls)
+        self.assertEqual('NONE', u.check(self.old, self.cache, now=102, manual=True, open_url=get))
+        self.assertEqual('NONE', u.check(self.old, self.cache, now=102+u.CHECK_INTERVAL, open_url=get))
+        self.assertEqual([u.FEED]*3, self.calls)
+
+    def test_retry_after_applies_even_to_manual_checks(self):
+        from urllib.error import HTTPError
+        def limited(url):
+            raise HTTPError(url, 403, 'rate limited', {'Retry-After': '180'}, None)
+        self.assertEqual('THROTTLED', u.check(self.old, self.cache, now=100, open_url=limited))
+        def get(url):
+            self.calls.append(url)
+            return io.BytesIO(b'[]')
+        self.assertEqual('THROTTLED', u.check(self.old, self.cache, now=279, manual=True, open_url=get))
+        self.assertEqual([], self.calls)
+        self.assertEqual('NONE', u.check(self.old, self.cache, now=280, manual=True, open_url=get))
+
+    def test_malformed_state_is_ignored(self):
+        (self.cache/'check.json').write_text('{"attempt":100,"retry":0,"after":"later"}')
+        self.assertEqual('NONE', u.check(self.old,self.cache,now=100,open_url=lambda _:io.BytesIO(b'[]')))

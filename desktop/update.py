@@ -141,7 +141,8 @@ def check_state(cache, now):
         state = json.loads((cache / 'check.json').read_text(encoding='utf8'))
         if not isinstance(state, dict) or not 0 <= state.get('attempt', -1) <= now + 60:
             return {}
-        if not 0 <= state.get('retry', -1) <= now + MAX_DELAY:
+        if any(type(state.get(key)) is not int or not 0 <= state[key] <= now + MAX_DELAY
+               for key in ('retry', 'after')):
             return {}
         return state
     except (OSError, ValueError, TypeError):

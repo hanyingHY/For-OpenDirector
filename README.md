@@ -2,7 +2,7 @@
 
 面向 Windows x64 的非官方桌面发行版。安装后从开始菜单打开 **OpenDirector**，无需命令行、Python 环境或本地开发服务器。不是网页快捷方式，也不连接某个托管的 OpenDirector 网站。
 
-**[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-2dd2f0a139431e481607)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032/artifacts/14424852182)** · **[画布重叠复现与修复](delivery/canvas-debug.mp4)** · **[Windows 全流程实录](delivery/studio-walkthrough.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
+**[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-2dd2f0a139431e481607)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032/artifacts/14424746913)** · **[画布重叠复现与修复](delivery/canvas-debug.mp4)** · **[Windows 全流程实录](delivery/studio-walkthrough.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
 
 登录有仓库维护权限的 GitHub 账号，可从草稿中直接下载 EXE。Actions 备用下载需要登录，解压得到 `OpenDirector-0.1.4-desktop.6-x64-Setup.exe`，双击即可按当前用户安装。用 `Get-FileHash .\OpenDirector-0.1.4-desktop.6-x64-Setup.exe -Algorithm SHA256` 对照 [SHA256SUMS.txt](delivery/SHA256SUMS.txt)。安装程序**没有 Authenticode 签名**，可能触发 SmartScreen。请核对来源和 SHA-256，不要关闭系统安全防护。无管理员权限要求；安装和首次启动请预留约 2 GB 空间。
 
@@ -14,7 +14,7 @@
 
 ## 桌面版与网页版是什么关系？
 
-固定基线是 [ThinkFlowLab/OpenDirector `4360d9e`](https://github.com/ThinkFlowLab/OpenDirector/tree/4360d9eb66b23598d3f637b2288745291e818862)（0.1.4）。使用其 `package-lock.json` 构建完整的 React/Vite UI，原样加载其 API、画布、时间线、字幕字体、双语消息、模型配置和 Agent skills。打包时对 Windows CLI 启动脚本、非交互 Git 初始化的标准输入和只读任务计数接入点做适配，不改画布的写入、渲染或模型业务规则。WebView2 提供 Edge 的文件选择、下载、剪贴板和 WebCodecs，不用另一套 UI 模仿原版。
+固定基线是 [ThinkFlowLab/OpenDirector `d05a56d`](https://github.com/ThinkFlowLab/OpenDirector/tree/d05a56d712349ee7e4c61407cfc2d0258724cefa)（0.1.4）。使用其 `package-lock.json` 构建完整的 React/Vite UI，原样加载其 API、画布、时间线、字幕字体、双语消息、模型配置和 Agent skills。打包时对 Windows CLI 启动脚本、非交互 Git 初始化的标准输入和只读任务计数接入点做适配，不改画布的写入、渲染或模型业务规则。WebView2 提供 Edge 的文件选择、下载、剪贴板和 WebCodecs，不用另一套 UI 模仿原版。
 
 | 项目 | 本次交付 |
 | --- | --- |
@@ -64,6 +64,13 @@ GUI 和 CLI 使用同一个项目 ID、会话租约、文件锁及版本规则�
 - 异常退出后，上游编辑租约最多保留约 **60 秒**。等待后重新连接，不要删除 SQLite 索引或锁文件。
 - Agent 不工作时，先检查模型配置、网络和诊断；不要在错误报告中包含密钥、完整项目目录或会话凭据。
 
+## desktop.7：Windows 回归修复
+
+- 内置 OpenCode 的数据、缓存和状态放在 `%LOCALAPPDATA%\OpenDirector\Desktop\agent-runtime\opencode-v1`，不读取或迁移用户的独立 OpenCode 数据库。旧的原生会话 ID 不会跨存储目录复用；继续对话时从 OpenDirector 已保存的历史恢复。内置依赖损坏时请用可信安装包覆盖安装，不要运行 `pip install`。
+- 应用运行时直接执行 `Uninstall.exe /S` 返回 **2**，保留安装与项目。请从托盘完全退出再卸载；正常完成返回 **0**，项目与凭据仍保留。安装器、卸载器、桌面宿主与 CLI 都含品牌图标和版本资源；Windows 设置显示发布者、图标与安装大小。
+- 自动更新的成功检查间隔跨重启保留 **12 小时**。手动检查可绕过常规间隔，但遵守服务器的限流退避；网络故障不影响编辑。桌面日志按 UTF-8 收集 Python stdout/stderr。
+- desktop.6 不信任当前候选分支的更新签名，所以 .6 → .7 用可信 EXE 手动覆盖安装。公开稳定频道应从已有客户端信任的 `main` 构建；不会为候选包绕过旧版签名验证。
+
 ## 复现 Windows 构建
 
 构建机需要 Windows x64、Python 3.12、Node.js 24.22.1/npm、NSIS 3、.NET Framework 自带的 x64 C# 编译器和网络。**这些是构建机依赖，不是最终用户的开发环境要求。**
@@ -74,7 +81,18 @@ python scripts/package.py
 Get-FileHash delivery\*-Setup.exe -Algorithm SHA256
 ```
 
-产物在 `delivery/`。大二进制不进 Git。打包脚本固定上游提交和依赖版本，并校验 Python、Git、ripgrep、FFmpeg 归档 SHA-256 和 OpenCode 的 npm 锁文件完整性。安装中保留上游 LICENSE/NOTICE、字体许可、Python 包元数据、Git/FFmpeg 发行说明及许可证。来源：[OpenDirector](https://github.com/ThinkFlowLab/OpenDirector)、[Python standalone](https://github.com/astral-sh/python-build-standalone/releases/tag/20261110)、[Git for Windows](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1)、[FFmpeg Windows 构建](https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2)。
+产物在 `delivery/`。大二进制不进 Git。仓库的 `delivery/SHA256SUMS.txt` **只对应文件中点名的 CI/Release 安装包**，不是本地可复现构建承诺。NSIS 版本、文件时间戳、构建工具链等都会改变产物字节；本地请为自己的 EXE 计算并另存校验和。
+
+**运行本地验收**：使用交互式的干净 Windows VM，安装 PowerShell **7+**（命令 `pwsh`，不是 Windows PowerShell 5.1）、Node/npm、WebView2 x64，并确保 `delivery/` 只有一个 `*-Setup.exe`。`smoke.ps1` 会通过 npm 安装固定的 `playwright-core@1.56.1` 并连接已打开的 WebView2，不需另下载 Chromium；运行独立的 Node 验收脚本前可手动执行同样的 npm 命令：
+
+```powershell
+npm install --prefix scripts --no-save --no-package-lock playwright-core@1.56.1
+$env:OD_VERIFY_RENDER = '1'
+pwsh -NoProfile -File scripts/smoke.ps1
+pwsh -NoProfile -File scripts/agent-check.ps1
+```
+
+打包脚本固定上游提交和依赖版本，并校验 Python、Git、ripgrep、FFmpeg 归档 SHA-256 和 OpenCode 的 npm 锁文件完整性。安装中保留上游 LICENSE/NOTICE、字体许可、Python 包元数据、Git/FFmpeg 发行说明及许可证。来源：[OpenDirector](https://github.com/ThinkFlowLab/OpenDirector)、[Python standalone](https://github.com/astral-sh/python-build-standalone/releases/tag/20261110)、[Git for Windows](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1)、[FFmpeg Windows 构建](https://github.com/GyanD/codexffmpeg/releases/tag/9.0.2)。
 
 ### 维护者：发布更新到稳定频道
 

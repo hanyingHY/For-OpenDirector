@@ -5,6 +5,7 @@ on:
     paths: ["desktop/**", "patches/**", "scripts/**", "verification/**", "tests/**", ".github/workflows/windows.yml"]
 permissions:
   contents: read
+  actions: read
 jobs:
   package:
     runs-on: windows-2022
@@ -29,6 +30,20 @@ jobs:
           name: Windows-installer-x64
           path: delivery/*.exe
           compression-level: 0
+      - uses: actions/download-artifact@v4
+        if: github.ref == 'refs/heads/arena/78ad8084-for-opendirector'
+        with:
+          run-id: 44297067032
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: .work/previous
+      - name: Verify desktop.6 baseline bytes
+        if: github.ref == 'refs/heads/arena/78ad8084-for-opendirector'
+        shell: pwsh
+        run: |
+          $previous = Get-Item .work/previous/OpenDirector-0.1.4-desktop.6-x64-Setup.exe
+          if ((Get-FileHash $previous).Hash -ne '922a78662aa981c114137be99a73e43fd636fd4b57197115e0bfd2ab1e195d2d') { throw 'Unexpected desktop.6 hash' }
+          "OD_PREVIOUS_INSTALLER=$($previous.FullName)" >> $env:GITHUB_ENV
       - name: Exercise installed application
         timeout-minutes: 10
         env:

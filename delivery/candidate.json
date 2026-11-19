@@ -1,0 +1,10 @@
+{
+  "run": 44297067032,
+  "source": "049daf0707b9b1950f9c802b713062f68aa95eba",
+  "draftTag": "windows-x64-0.1.4-desktop.6",
+  "previous": {
+    "run": 44269711786,
+    "version": "0.1.4-desktop.5",
+    "sha256": "5da1d83969fbae2470882c124181e7fa1b7a2d640698a67008a333e5bbad3a3b"
+  }
+}

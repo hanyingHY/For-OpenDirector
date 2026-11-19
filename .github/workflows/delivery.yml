@@ -1,0 +1,53 @@
+name: Retain verified Windows delivery
+on:
+  workflow_dispatch:
+  push:
+    paths: ['delivery/candidate.json']
+permissions:
+  actions: read
+  contents: write
+jobs:
+  retain:
+    if: github.repository == 'hanyingHY/For-OpenDirector' && github.ref == 'refs/heads/arena/78ad8084-for-opendirector'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v6
+      - id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(jq -er '.run|numbers' delivery/candidate.json)
+          sha=$(jq -er .source delivery/candidate.json)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" | jq -e --arg sha "$sha" --arg ref "$GITHUB_REF_NAME" --arg repo "$GITHUB_REPOSITORY" '.head_sha == $sha and .head_branch == $ref and .head_repository.full_name == $repo and .path == ".github/workflows/windows.yml"'
+          gh run watch "$run" --exit-status --interval 20
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
+          path: .work/verified
+      - name: Verify signed artifact identity, then retain EXE in the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          base=.work/verified
+          metadata="$base/Windows-update-metadata/windows-update.json"
+          tag="windows-x64-$(jq -er .version "$metadata")"
+          test "$tag" = "$(jq -er .draftTag delivery/candidate.json)"
+          test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$(jq -er .source delivery/candidate.json)"
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+          file=$(jq -er .file "$metadata")
+          exe="$base/Windows-installer-x64/$file"
+          printf '%s  %s\n' "$(jq -er .sha256 "$metadata")" "$file" > delivery/SHA256SUMS.txt
+          (cd "$base/Windows-installer-x64" && sha256sum --check ../../../delivery/SHA256SUMS.txt)
+          for name in windows-{agent-en,canvas,reopened-en,sidebar,timeline}.png windows-{demo,sidebar,workflow}.mp4 timeline-export.mp4; do
+            test -s "$base/Windows-native-evidence/$name"
+            cp "$base/Windows-native-evidence/$name" "delivery/desktop.7-$name"
+          done
+          gh release upload "$tag" "$exe" "$metadata" "$metadata.sigstore.json" delivery/SHA256SUMS.txt delivery/desktop.7-windows-workflow.mp4 delivery/desktop.7-timeline-export.mp4
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add delivery/SHA256SUMS.txt delivery/desktop.7-*
+          git commit -m 'Retain desktop.7 Windows recordings and installer checksum'
+          git push origin "HEAD:$GITHUB_REF"

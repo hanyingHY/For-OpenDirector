@@ -2,11 +2,15 @@
 
 面向 Windows x64 的非官方桌面发行版。安装后从开始菜单打开 **OpenDirector**，无需命令行、Python 环境或本地开发服务器。不是网页快捷方式，也不连接某个托管的 OpenDirector 网站。
 
+**[desktop.7 Windows x64 安装包（维护者草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-77520365e069afb1c1a1)** · **[desktop.7 Actions 安装包（ZIP 内含 EXE）](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785/artifacts/14495997765)** · [desktop.7 Windows 验收记录](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44452250785)
+
+### 上一版 desktop.6 归档
+
 **[下载 Windows EXE（仓库维护者可见的草稿）](https://github.com/hanyingHY/For-OpenDirector/releases/tag/untagged-2dd2f0a139431e481607)** · **[Actions 备用下载](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032/artifacts/14424746913)** · **[画布重叠复现与修复](delivery/canvas-debug.mp4)** · **[Windows 全流程实录](delivery/studio-walkthrough.mp4)** · [时间线导出的 MP4](delivery/timeline-export.mp4) · [可导入的示例画布](examples/Blue%20Hour.canvas)
 
-登录有仓库维护权限的 GitHub 账号，可从草稿中直接下载 EXE。Actions 备用下载需要登录，解压得到 `OpenDirector-0.1.4-desktop.6-x64-Setup.exe`，双击即可按当前用户安装。用 `Get-FileHash .\OpenDirector-0.1.4-desktop.6-x64-Setup.exe -Algorithm SHA256` 对照 [SHA256SUMS.txt](delivery/SHA256SUMS.txt)。安装程序**没有 Authenticode 签名**，可能触发 SmartScreen。请核对来源和 SHA-256，不要关闭系统安全防护。无管理员权限要求；安装和首次启动请预留约 2 GB 空间。
+登录有仓库维护权限的 GitHub 账号，可从草稿中直接下载 EXE。Actions 备用下载需要登录，解压得到 `OpenDirector-0.1.4-desktop.6-x64-Setup.exe`，双击即可按当前用户安装。用 `Get-FileHash .\OpenDirector-0.1.4-desktop.6-x64-Setup.exe -Algorithm SHA256` 对照其发布草稿内的 `SHA256SUMS.txt`。安装程序**没有 Authenticode 签名**，可能触发 SmartScreen。请核对来源和 SHA-256，不要关闭系统安全防护。无管理员权限要求；安装和首次启动请预留约 2 GB 空间。
 
-**本次结果**：[源码构建与 five-lane 检查通过](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032)，[独立 Windows 安装/升级/导出/验收通过](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44299900134)。画布录像来自升级前的 desktop.5；[图片编辑 → Agent → 渲染实录](delivery/studio-walkthrough.mp4)、[Agent 写入截图](delivery/windows-agent-en.png)和 1.5 秒 H.264 输出来自升级后的 desktop.6。逐项结果与边界见 [Windows 核对清单](WINDOWS-AUDIT.md)。
+**desktop.6 结果**：[源码构建与 five-lane 检查通过](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44297067032)，[独立 Windows 安装/升级/导出/验收通过](https://github.com/hanyingHY/For-OpenDirector/actions/runs/44299900134)。画布录像来自升级前的 desktop.5；[图片编辑 → Agent → 渲染实录](delivery/studio-walkthrough.mp4)、[Agent 写入截图](delivery/windows-agent-en.png)和 1.5 秒 H.264 输出来自升级后的 desktop.6。逐项结果与边界见 [Windows 核对清单](WINDOWS-AUDIT.md)。
 
 ### 画布布局（desktop.6 新增）
 

@@ -7,6 +7,17 @@ import assert from 'node:assert/strict';
 export async function renderCheck(page, app) {
   await page.getByRole('button',{name:'Add Timeline',exact:true}).click();
   const node=page.locator('.react-flow__node.selected');
+  // desktop.8 regression (RFC #362): an empty timeline can still reach the toolbar
+  // export; the failed card must be closable, not only retryable, and must vanish
+  // without leaving an orphan video behind.
+  await page.locator('.cw-selection-toolbar button[data-action="output"]').click();
+  const stuck=page.locator('.cw-timeline-pending');
+  await stuck.locator('[role="alert"]').waitFor();
+  assert.match(await stuck.locator('[role="alert"]').innerText(),/Add media to the timeline first/);
+  await page.screenshot({path:'delivery/windows-timeline-failed.png'});
+  await stuck.getByRole('button',{name:'Dismiss',exact:true}).click();
+  await stuck.waitFor({state:'detached'});
+  if (!(await node.count())) await page.locator('.react-flow__node').last().click();
   await node.locator('.cw-node-title').click({button:'right'});
   await page.getByRole('menuitem',{name:'Open editor',exact:true}).click();
   const src='data:image/jpeg;base64,'+readFileSync('examples/01-orbit.jpg').toString('base64');

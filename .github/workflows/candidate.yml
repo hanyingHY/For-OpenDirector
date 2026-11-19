@@ -1,0 +1,165 @@
+name: Verify existing Windows installer
+on:
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      build: ${{ steps.select.outputs.build }}
+      source: ${{ steps.select.outputs.source }}
+      previous: ${{ steps.select.outputs.previous }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: select
+        name: Require a successful product build on this branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(jq -er .run delivery/candidate.json)
+          [[ "$id" =~ ^[0-9]+$ ]]
+          sha=$(jq -er .source delivery/candidate.json)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id" | jq -e --arg sha "$sha" --arg ref "$GITHUB_REF_NAME" --arg repo "$GITHUB_REPOSITORY" '.head_sha == $sha and .head_branch == $ref and .head_repository.full_name == $repo and .path == ".github/workflows/windows.yml"'
+          gh run watch "$id" --exit-status --interval 20
+          echo "build=$id" >> "$GITHUB_OUTPUT"
+          echo "source=$sha" >> "$GITHUB_OUTPUT"
+          echo "previous=$(jq -r '.previous.run // empty' delivery/candidate.json)" >> "$GITHUB_OUTPUT"
+  verify:
+    needs: source
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: delivery
+      - uses: actions/download-artifact@v4
+        if: needs.source.outputs.previous != ''
+        with:
+          run-id: ${{ needs.source.outputs.previous }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: .work/previous
+      - name: Identify trusted previous installer
+        if: needs.source.outputs.previous != ''
+        shell: pwsh
+        run: |
+          $old = Get-Item .work/previous/*-Setup.exe
+          $expected = (Get-Content delivery/candidate.json -Raw | ConvertFrom-Json).previous.sha256
+          if ((Get-FileHash $old).Hash -ne $expected) { throw 'Unexpected previous installer' }
+          "OD_PREVIOUS_INSTALLER=$($old.FullName)" >> $env:GITHUB_ENV
+      - name: Install → edit → export → restart → upgrade → render → uninstall
+        env:
+          OD_VERIFY_RENDER: '1'
+        run: ./scripts/smoke.ps1
+      - uses: actions/download-artifact@v4
+        if: needs.source.outputs.previous != ''
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-update-metadata
+          path: delivery
+      - name: Prior installed updater authorizes the candidate and preserves project identity
+        if: needs.source.outputs.previous != ''
+        run: ./verification/previous-update.ps1
+      - name: Identify tested bytes
+        shell: pwsh
+        run: |
+          foreach ($name in 'windows-canvas.png','windows-reopened-en.png','windows-agent-en.png','windows-timeline.png','windows-sidebar-before.mp4','windows-sidebar.mp4','windows-sidebar.png','windows-demo.mp4','windows-workflow.mp4','timeline-export.mp4') {
+            if ((Get-Item "delivery/$name" -ErrorAction Stop).Length -eq 0) { throw "Missing fresh evidence: $name" }
+          }
+          $file=Get-Item delivery/*-Setup.exe
+          $hash=(Get-FileHash $file).Hash.ToLowerInvariant()
+          "$hash  $($file.Name)" | Out-File delivery/SHA256SUMS.txt -Encoding ascii
+          Write-Output "::notice::Installer SHA-256: $hash"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: Native-acceptance
+          path: |
+            delivery/windows-*.png
+            delivery/windows-demo.mp4
+            delivery/windows-sidebar-before.mp4
+            delivery/windows-sidebar.mp4
+            delivery/windows-workflow.mp4
+            delivery/timeline-export.mp4
+            delivery/SHA256SUMS.txt
+  agent:
+    needs: source
+    runs-on: windows-2022
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: delivery
+      - uses: actions/checkout@v6
+        with:
+          repository: ThinkFlowLab/OpenDirector
+          ref: d05a56d712349ee7e4c61407cfc2d0258724cefa
+          path: .work/OpenDirector-source
+          persist-credentials: false
+      - name: Real Agent, real CLI, deterministic provider
+        shell: pwsh
+        run: |
+          $installer=(Get-Item delivery/*-Setup.exe).FullName
+          if ((Start-Process $installer -ArgumentList '/S' -Wait -PassThru).ExitCode) { throw 'Install failed' }
+          $env:OD_TEST_APP="$env:LOCALAPPDATA\Programs\OpenDirector\app"
+          ./scripts/agent-check.ps1
+  # Keep only small, inspectable acceptance evidence in Git. The executable is
+  # a release asset, not a 180+ MB Git blob. Never write to upstream or main
+  # from a feature branch, and never force-push over concurrent changes.
+  retain:
+    needs: [source, verify, agent]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: Native-acceptance
+          path: delivery
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-installer-x64
+          path: delivery
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ needs.source.outputs.build }}
+          github-token: ${{ github.token }}
+          name: Windows-update-metadata
+          path: delivery
+      - name: Preserve Windows capture and checksum on the tested working branch
+        run: |
+          cd delivery && sha256sum --check SHA256SUMS.txt && cd ..
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add delivery/windows-sidebar-before.mp4 delivery/windows-sidebar.mp4 delivery/windows-sidebar.png delivery/windows-workflow.mp4 delivery/windows-agent-en.png delivery/windows-canvas.png delivery/windows-reopened-en.png delivery/windows-timeline.png delivery/windows-demo.mp4 delivery/timeline-export.mp4 delivery/SHA256SUMS.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record installed Windows application and verified MP4 output"
+            git push origin "HEAD:$GITHUB_REF"
+          fi
+      - name: Attach exact EXE to the maintainers' existing draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(jq -er .draftTag delivery/candidate.json)
+          [[ "$tag" =~ ^windows-x64-[a-zA-Z0-9.-]+$ ]]
+          test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$(jq -er .source delivery/candidate.json)"
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+          test "$tag" = "windows-x64-$(jq -er .version delivery/windows-update.json)"
+          test "$(jq -er .sha256 delivery/windows-update.json)" = "$(cut -d ' ' -f1 delivery/SHA256SUMS.txt)"
+          gh release upload "$tag" delivery/windows-update.json delivery/windows-update.json.sigstore.json delivery/*-Setup.exe delivery/SHA256SUMS.txt delivery/windows-sidebar.mp4 delivery/windows-demo.mp4 delivery/windows-workflow.mp4

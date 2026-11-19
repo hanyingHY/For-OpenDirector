@@ -7,10 +7,12 @@
  * patch adds a Dismiss/关闭 action. This journey fails on the unpatched tree.
  *
  * Runs inside the pinned upstream tree after applying patches/timeline-output-dismiss.patch,
- * against the same dev server + isolated creation fixture as tests/browser/*.mjs.
+ * against the same dev server + isolated creation fixture as the tests/browser suites.
+ * It lives at tests/ (not tests/browser/) on purpose: that directory is owned by
+ * upstream's manifest check (scripts/check-browser-manifest.mjs).
  */
 import assert from "node:assert/strict";
-import { launchBrowser } from "./engine.mjs";
+import { launchBrowser } from "./browser/engine.mjs";
 const base = process.env.CREATION_WEB_URL ?? "http://127.0.0.1:5179";
 const api = process.env.CREATION_API_URL ?? base;
 const headers = { "X-OpenDirector-Request": "1" };

@@ -25,7 +25,7 @@ jobs:
           ref: ${{ steps.upstream.outputs.sha }}
           path: source
           persist-credentials: false
-      - run: git apply ../patches/canvas-placement.patch ../patches/bundled-agent.patch ../patches/timeline-output-dismiss.patch ../verification/desktop-error-contract.patch && cp ../verification/placement.test.ts tests/ && cp ../verification/timeline_output_dismiss.mjs tests/browser/
+      - run: git apply ../patches/canvas-placement.patch ../patches/bundled-agent.patch ../patches/timeline-output-dismiss.patch ../verification/desktop-error-contract.patch && cp ../verification/placement.test.ts tests/ && cp ../verification/timeline_output_dismiss.mjs tests/
       - uses: actions/setup-node@v6
         with: {node-version-file: source/.nvmrc}
       - uses: actions/setup-python@v6
@@ -72,7 +72,7 @@ jobs:
           fi
           tail -12 "$RUNNER_TEMP/journey.log"
           if [[ "$SUITE" == canvas ]]; then
-            node tests/browser/timeline_output_dismiss.mjs
+            node tests/timeline_output_dismiss.mjs
             git apply ../verification/frame-connections.patch
             node tests/browser/first_last_frame_connections.mjs
           fi

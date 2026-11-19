@@ -3,8 +3,21 @@ Unicode true
 !include "x64.nsh"
 !include "FileFunc.nsh"
 !define /file OD_VERSION "VERSION"
+!include "..\.work\Version.nsh"
+!if "${OD_VERSION}" != "${OD_BUILD_VERSION}"
+  !error "Staged version is stale; rerun scripts/package.py"
+!endif
+!define MUI_ICON "OpenDirector.ico"
+!define MUI_UNICON "OpenDirector.ico"
+VIProductVersion "${OD_FILE_VERSION}"
+VIAddVersionKey /LANG=1033 "ProductName" "OpenDirector"
+VIAddVersionKey /LANG=1033 "CompanyName" "For-OpenDirector"
+VIAddVersionKey /LANG=1033 "FileDescription" "OpenDirector Windows x64 Setup"
+VIAddVersionKey /LANG=1033 "FileVersion" "${OD_FILE_VERSION}"
+VIAddVersionKey /LANG=1033 "ProductVersion" "${OD_VERSION}"
 Var updateParent
 Var appGate
+Var wrapperParent
 Name "OpenDirector"
 OutFile "..\delivery\OpenDirector-${OD_VERSION}-x64-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\OpenDirector"
@@ -26,11 +39,13 @@ SetCompressor /SOLID lzma
   Pop $1
   ${If} $0 = 0
     MessageBox MB_OK|MB_ICONSTOP "Cannot reserve installation. Retry after closing OpenDirector. / 无法锁定安装目录，请退出应用后重试。" /SD IDOK
+    SetErrorLevel 2
     Abort
   ${EndIf}
   ${If} $1 = 183
     System::Call 'kernel32::CloseHandle(p r0)'
     MessageBox MB_OK|MB_ICONSTOP "Quit OpenDirector from the tray and finish any other setup first. / 请先从托盘退出应用，并等待其他安装程序完成。" /SD IDOK
+    SetErrorLevel 2
     Abort
   ${EndIf}
   StrCpy $appGate $0
@@ -48,6 +63,7 @@ Function .onInit
   ; have shut down. The caller never terminates someone else's process.
   IntCmp $updateParent 0 invalid invalid waitParent
 invalid:
+  SetErrorLevel 2
   Abort "Invalid update parent"
 waitParent:
   System::Call 'kernel32::OpenProcess(i 0x100000, i 0, i $updateParent)p.r1'
@@ -56,6 +72,7 @@ waitParent:
     System::Call 'kernel32::CloseHandle(p r1)'
     ${If} $2 != 0
       MessageBox MB_OK|MB_ICONSTOP "OpenDirector is still running. Close it and retry. / 应用仍在运行，请关闭后重试。"
+      SetErrorLevel 2
       Abort
     ${EndIf}
   ${EndIf}
@@ -65,6 +82,7 @@ normal:
 checked:
   ${IfNot} ${RunningX64}
     MessageBox MB_OK "64-bit Windows is required. / 需要 64 位 Windows。" /SD IDOK
+    SetErrorLevel 2
     Abort
   ${EndIf}
   !insertmacro ReserveApp
@@ -83,6 +101,31 @@ Function .onInstFailed
   ${EndIf}
 FunctionEnd
 Function un.onInit
+  SetRegView 64
+  ${GetParameters} $0
+  ClearErrors
+  ${GetOptions} $0 "/ODCLEANUP=" $wrapperParent
+  IfErrors normalUninstall
+  ; The actual uninstall is complete. Wait for the public launcher to exit
+  ; before deleting its PE, but never remove the launcher of a new install.
+  System::Call 'kernel32::OpenProcess(i 0x100000, i 0, i $wrapperParent)p.r1'
+  ${If} $1 P<> 0
+    System::Call 'kernel32::WaitForSingleObject(p r1, i 15000)i.r2'
+    System::Call 'kernel32::CloseHandle(p r1)'
+    ${If} $2 != 0
+      Quit
+    ${EndIf}
+  ${EndIf}
+  !insertmacro ReserveApp
+  IfFileExists "$INSTDIR\UninstallEngine.exe" cleanupDone
+  Delete "$INSTDIR\Uninstall.exe"
+  RMDir "$INSTDIR"
+cleanupDone:
+  !insertmacro ReleaseApp
+  Quit
+normalUninstall:
+  StrCpy $wrapperParent ""
+  ${GetOptions} $0 "/ODWRAPPER=" $wrapperParent
   !insertmacro ReserveApp
 FunctionEnd
 Section
@@ -116,12 +159,18 @@ activate:
   Rename "$INSTDIR\incoming" "$INSTDIR\app"
   IfErrors rollback
   ClearErrors
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  WriteUninstaller "$INSTDIR\UninstallEngine.exe"
+  IfErrors undoActivation
+  File /oname=Uninstall.exe "..\.work\Uninstall.exe"
   IfErrors undoActivation
   CreateShortcut "$SMPROGRAMS\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   CreateShortcut "$DESKTOP\OpenDirector.lnk" "$INSTDIR\app\OpenDirector.exe"
   WriteRegStr HKCU "${ARP}" "DisplayName" "OpenDirector (Windows x64)"
   WriteRegStr HKCU "${ARP}" "DisplayVersion" "${OD_VERSION}"
+  WriteRegStr HKCU "${ARP}" "DisplayIcon" '$\"$INSTDIR\app\OpenDirector.exe$\",0'
+  WriteRegStr HKCU "${ARP}" "Publisher" "For-OpenDirector"
+  ${GetSize} "$INSTDIR\app" "/S=0K" $2 $3 $4
+  WriteRegDWORD HKCU "${ARP}" "EstimatedSize" $2
   WriteRegStr HKCU "${ARP}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe" "" "$INSTDIR\app\OpenDirector.exe"
   ; CLI shell registration is opt-in (tray); preserve it across upgrades.
@@ -134,6 +183,7 @@ undoActivation:
 rollback:
   Rename "$INSTDIR\previous" "$INSTDIR\app"
 failed:
+  SetErrorLevel 2
   Abort "Installation failed. Check free space and close running programs. / 安装失败，请检查空间并关闭占用文件的程序。"
 done:
   !insertmacro ReleaseApp
@@ -155,11 +205,18 @@ Section "Uninstall"
   ${EndIf}
   DeleteRegKey HKCU "${ARP}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\App Paths\OpenDirector.exe"
-  Delete "$INSTDIR\Uninstall.exe"
-  RMDir "$INSTDIR"
+  Delete "$INSTDIR\UninstallEngine.exe"
+  ${If} $wrapperParent != ""
+    ; Without _?=, NSIS spawns a disposable copy; that copy waits in un.onInit.
+    ExecWait '$\"$EXEPATH$\" /S /ODCLEANUP=$wrapperParent /D=$INSTDIR'
+  ${Else}
+    Delete "$INSTDIR\Uninstall.exe"
+    RMDir "$INSTDIR"
+  ${EndIf}
   !insertmacro ReleaseApp
   Goto unDone
 unFailed:
+  SetErrorLevel 2
   Abort "Close programs using OpenDirector and retry uninstall. / 请关闭占用文件的程序，再次卸载。"
 unDone:
 SectionEnd

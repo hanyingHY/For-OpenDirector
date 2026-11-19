@@ -2,7 +2,7 @@ name: Windows x64 desktop
 on:
   workflow_dispatch:
   push:
-    paths: ["desktop/**", "patches/**", "scripts/package.py", ".github/workflows/windows.yml"]
+    paths: ["desktop/**", "patches/**", "scripts/**", "verification/**", "tests/**", ".github/workflows/windows.yml"]
 permissions:
   contents: read
 jobs:
@@ -46,7 +46,7 @@ jobs:
             delivery/timeline-export.mp4
   sign-update:
     needs: package
-    if: github.repository == 'hanyingHY/For-OpenDirector' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/arena/634b6979-for-opendirector')
+    if: github.repository == 'hanyingHY/For-OpenDirector' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/arena/78ad8084-for-opendirector')
     runs-on: ubuntu-latest
     permissions:
       contents: read

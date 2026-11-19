@@ -21,6 +21,7 @@ internal static class Host {
     static readonly string Secret = NewSecret();
     static readonly TaskCompletionSource<int> Ready = new TaskCompletionSource<int>();
     static readonly string Ticket = Path.Combine(State,"session.bin");
+    internal static readonly Icon AppIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
     static Process service;
     static Updates updates;
     static IntPtr job;
@@ -81,6 +82,8 @@ internal static class Host {
         info.RedirectStandardInput = info.RedirectStandardOutput = info.RedirectStandardError = true;
         info.EnvironmentVariables["PATH"] = Path.Combine(Install,"media") + ";" + Path.Combine(Install,"git","cmd") + ";" + info.EnvironmentVariables["PATH"];
         info.EnvironmentVariables["PYTHONUTF8"] = "1";
+        info.EnvironmentVariables["OPENDIRECTOR_BUNDLED_AGENT_HOME"] = Path.Combine(State, "agent-runtime");
+        info.StandardErrorEncoding = info.StandardOutputEncoding = new System.Text.UTF8Encoding(false);
         service = new Process { StartInfo = info };
         service.ErrorDataReceived += (s,e) => { if(e.Data!=null) Write(e.Data); };
         service.OutputDataReceived += (s,e) => { int n; if(e.Data!=null && e.Data.StartsWith("OD-DESKTOP-READY ") && int.TryParse(e.Data.Substring(17),out n) && n>0 && n<=65535) Ready.TrySetResult(n); else if(e.Data==null) Ready.TrySetResult(0); else Write(e.Data); };
@@ -111,7 +114,7 @@ internal static class Host {
     }
     static Form Window(bool primary=false) {
         Form form=primary?(Form)new MainWindow():new Form();
-        form.Text="OpenDirector"; form.Size=new Size(1440,900); form.MinimumSize=new Size(800,560);
+        form.Text="OpenDirector"; form.Icon=AppIcon; form.Size=new Size(1440,900); form.MinimumSize=new Size(800,560);
         form.StartPosition=FormStartPosition.CenterScreen; form.BackColor=Color.FromArgb(24,24,24);
         return form;
     }

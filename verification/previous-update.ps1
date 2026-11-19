@@ -1,3 +1,4 @@
+﻿#Requires -Version 7.0
 # Run only on the candidate acceptance VM AFTER the uninstall/retention check.
 # Reuse its project and key fixture; do not manufacture a replacement workspace.
 $ErrorActionPreference='Stop'

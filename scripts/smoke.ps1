@@ -1,3 +1,4 @@
+﻿#Requires -Version 7.0
 $ErrorActionPreference='Stop'
 trap { Write-Output ("::error::Smoke line {0}: {1}" -f $_.InvocationInfo.ScriptLineNumber,$_.Exception.Message); exit 1 }
 Get-ChildItem -Path delivery/windows-*.png,delivery/windows-*.mp4,delivery/timeline-export.mp4,delivery/SHA256SUMS.txt -ErrorAction SilentlyContinue | Remove-Item
@@ -6,6 +7,14 @@ $root = Join-Path $env:LOCALAPPDATA 'Programs\OpenDirector'
 $tempRoot=[IO.Path]::GetTempPath()
 $env:OPENDIRECTOR_ROOT = Join-Path $tempRoot 'OpenDirector 测试 projects'
 function Run-Installer($package=$installer) { if ((Start-Process $package -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) { throw 'Silent installation failed' } }
+$expected=(Get-Content desktop/VERSION).Trim()
+$numeric=$expected.Replace('-desktop.','.')
+function Assert-PE($path) {
+    $info=(Get-Item -LiteralPath $path).VersionInfo
+    $fixed="$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart).$($info.FilePrivatePart)"
+    if ($fixed -ne $numeric -or $info.ProductName -ne 'OpenDirector' -or !$info.FileDescription) { throw "Invalid PE metadata: $path ($fixed)" }
+}
+Assert-PE $installer
 if ($env:OD_PREVIOUS_INSTALLER) { Run-Installer $env:OD_PREVIOUS_INSTALLER } else { Run-Installer }
 New-Item -ItemType Directory -Force .work | Out-Null
 # Seed a dummy model through the real store, never a user key. Compare exact
@@ -67,6 +76,17 @@ function Test-UI($phase) {
             $blocked=Start-Process $installer -ArgumentList '/S' -Wait -PassThru
             if (!$blocked.ExitCode -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or $proc.HasExited) { throw 'Live install was not refused safely' }
             if ($phase -eq 'reopen') {
+                $uninstaller=Join-Path $root 'Uninstall.exe'
+                $beforeUninstall=(Get-FileHash $uninstaller).Hash
+                $arp='HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\OpenDirectorDesktop'
+                $registration=Get-ItemProperty $arp
+                if ($registration.DisplayVersion -ne $expected -or $registration.DisplayIcon -notmatch 'OpenDirector\.exe' -or
+                    $registration.Publisher -ne 'For-OpenDirector' -or $registration.EstimatedSize -lt 1) { throw 'Invalid installed-app registration' }
+                foreach ($exe in @($uninstaller,"$root\app\OpenDirector.exe","$root\app\OpenDirector-CLI.exe")) { Assert-PE $exe }
+                $blocked=Start-Process $uninstaller -ArgumentList '/S' -Wait -PassThru
+                if ($blocked.ExitCode -ne 2 -or $proc.HasExited -or $before -ne (Get-FileHash "$root\app\OpenDirector.exe").Hash -or
+                    $beforeUninstall -ne (Get-FileHash $uninstaller).Hash -or !(Test-Path $arp)) { throw "Live /S uninstall not refused safely (exit=$($blocked.ExitCode))" }
+                Write-Output 'PASS: PE version metadata, ARP fields and bare Uninstall.exe /S returns 2 while running'
                 ./verification/quit.ps1 -HostId $proc.Id -Agents 0 -Accept
                 if (Test-Path "$env:LOCALAPPDATA\OpenDirector\Desktop\session.bin") { throw 'Clean exit left a CLI ticket' }
                 $offline=(& "$root\app\OpenDirector-CLI.exe" project list | Out-String)
@@ -100,11 +120,27 @@ if (!$second.WaitForExit(20000) -or !$second.ExitCode) { throw 'Overlapping inst
 if (!$primary.WaitForExit(150000) -or $primary.ExitCode) { throw 'First installer failed' }
 # Upstream intentionally retains the last writer's lease for 60s on crash.
 Start-Sleep -Seconds 61
+# Use an isolated stand-in for the user’s incompatible newer OpenCode database.
+# The packaged runtime must never open or rewrite it.
+$env:XDG_DATA_HOME=Join-Path (Resolve-Path .work).Path 'global OpenCode 测试'
+$env:XDG_CACHE_HOME=Join-Path $env:XDG_DATA_HOME 'cache'
+$env:XDG_STATE_HOME=Join-Path $env:XDG_DATA_HOME 'state'
+$fakeDb=Join-Path $env:XDG_DATA_HOME 'opencode\opencode.db'
+New-Item -ItemType Directory -Force (Split-Path $fakeDb) | Out-Null
+Remove-Item $fakeDb -ErrorAction SilentlyContinue
+& "$root\app\python\python.exe" -I -c "import sqlite3,sys; sqlite3.connect(sys.argv[1]).execute('CREATE TABLE newer_schema (id INTEGER PRIMARY KEY)')" $fakeDb
+if ($LASTEXITCODE) { throw 'Could not seed incompatible OpenCode database' }
+$dbHash=(Get-FileHash $fakeDb).Hash
 Test-UI 'reopen'
+if ((Get-FileHash $fakeDb).Hash -ne $dbHash) { throw 'Bundled Agent modified external OpenCode database' }
+$privateDb=Join-Path $env:LOCALAPPDATA 'OpenDirector\Desktop\agent-runtime\opencode-v1\data\opencode\opencode.db'
+if (!(Test-Path $privateDb)) { throw 'Missing private Agent database' }
+Write-Output 'PASS: skills and native turn succeeded with incompatible inherited XDG data; external database unmodified' 
 # Broken user-selected root: startup must fail with actionable native diagnostics,
 # not open an empty canvas or destroy the inaccessible workspace.
 $validRoot=$env:OPENDIRECTOR_ROOT
-$env:OPENDIRECTOR_ROOT=(New-TemporaryFile).FullName
+$env:OPENDIRECTOR_ROOT=Join-Path $tempRoot "OpenDirector 中文日志诊断 $([guid]::NewGuid()).txt"
+New-Item -ItemType File -Path $env:OPENDIRECTOR_ROOT | Out-Null
 try {
     $bad=Start-Process "$root\app\OpenDirector.exe" -PassThru
     $until=[DateTime]::UtcNow.AddSeconds(75)
@@ -113,6 +149,7 @@ try {
         if ($message) { break }; Start-Sleep -Milliseconds 300
     } while ([DateTime]::UtcNow -lt $until)
     if (!$message) { throw 'Missing bilingual startup failure diagnostic' }
+    if (!(Select-String -Path "$env:LOCALAPPDATA\OpenDirector\Desktop\desktop.log" -SimpleMatch (Split-Path $env:OPENDIRECTOR_ROOT -Leaf) -Quiet)) { throw 'Python traceback lost the Chinese path' }
 } finally {
     if ($bad -and !$bad.HasExited) { $bad.Kill(); $bad.WaitForExit() }
     Remove-Item -LiteralPath $env:OPENDIRECTOR_ROOT; $env:OPENDIRECTOR_ROOT=$validRoot
@@ -123,8 +160,8 @@ New-Item $cmd -Force | Out-Null
 Set-Item $cmd -Value 'C:\independent\OpenDirector-CLI.exe'
 $projectFiles=@(Get-ChildItem $env:OPENDIRECTOR_ROOT -File -Recurse)
 if (!$projectFiles.Count) { throw 'No project files to preserve' }
-Start-Process "$root\Uninstall.exe" -ArgumentList '/S',("_?="+$root) -Wait
-if (Test-Path "$root\app\OpenDirector.exe") { throw 'Uninstall failed' }
+$uninstall=Start-Process "$root\Uninstall.exe" -ArgumentList '/S' -Wait -PassThru
+if ($uninstall.ExitCode -ne 0 -or (Test-Path "$root\app\OpenDirector.exe") -or (Test-Path "$root\Uninstall.exe")) { throw "Silent uninstall failed ($($uninstall.ExitCode))" }
 foreach ($f in $projectFiles) { if (!(Test-Path $f.FullName)) { throw 'Uninstall removed project data' } }
 
 if ((Get-FileHash $settings).Hash -ne $hash) { throw 'Upgrade or uninstall changed credentials' }

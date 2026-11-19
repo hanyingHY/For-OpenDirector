@@ -1,3 +1,4 @@
+﻿#Requires -Version 7.0
 # Drive the installed application's accessible Alt+Space system menu and its
 # real native confirmation. Never search by a global window title.
 param([Parameter(Mandatory)][int]$HostId,[Parameter(Mandatory)][int]$Agents,[switch]$Accept)

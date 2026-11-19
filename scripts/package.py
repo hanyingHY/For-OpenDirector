@@ -35,18 +35,40 @@ def unpack(path, dest):
         archive.extractall(dest, filter='data')
 
 
+def windows_metadata():
+    import re
+    version = (ROOT/'desktop/VERSION').read_text().strip()
+    match = re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-desktop\.(0|[1-9][0-9]*)', version)
+    if not match or any(int(part) >= 65535 for part in match.groups()):
+        raise ValueError('Invalid PE version: ' + version)
+    numeric = '.'.join(match.groups())
+    (WORK/'Version.nsh').write_text(f'!define OD_BUILD_VERSION "{version}"\n!define OD_FILE_VERSION "{numeric}"\n', encoding='ascii')
+    for name, description in [('Host', 'OpenDirector Desktop'), ('Cli', 'OpenDirector Command Line'), ('Uninstall', 'OpenDirector Uninstaller')]:
+        (WORK/f'{name}.AssemblyInfo.cs').write_text(f'''using System.Reflection;
+[assembly: AssemblyTitle("{description}")]
+[assembly: AssemblyDescription("{description} for Windows x64")]
+[assembly: AssemblyCompany("For-OpenDirector")]
+[assembly: AssemblyProduct("OpenDirector")]
+[assembly: AssemblyVersion("{numeric}")]
+[assembly: AssemblyFileVersion("{numeric}")]
+[assembly: AssemblyInformationalVersion("{version}")]
+''', encoding='ascii')
+
+
 def build():
     WORK.mkdir(exist_ok=True)
     shutil.rmtree(APP, ignore_errors=True)
     APP.mkdir()
+    windows_metadata()
     (ROOT / 'delivery').mkdir(exist_ok=True)
     src = WORK / ('OpenDirector-' + SHA)
     if src.exists(): shutil.rmtree(src)
     unpack(download('https://codeload.github.com/ThinkFlowLab/OpenDirector/tar.gz/' + SHA, f'upstream-{SHA}.tgz'), WORK)
     # git apply treats paths relative to the extracted upstream tree, even
     # when the build directory lives inside this distribution repository.
-    subprocess.run(['git', '-c', 'core.autocrlf=false', 'apply', '--no-index', str(ROOT/'patches/canvas-placement.patch')],
-                   cwd=src, env={**os.environ, 'GIT_CEILING_DIRECTORIES': str(src.parent)}, check=True)
+    for patch in ('canvas-placement.patch', 'bundled-agent.patch'):
+        subprocess.run(['git', '-c', 'core.autocrlf=false', 'apply', '--no-index', str(ROOT/'patches'/patch)],
+                       cwd=src, env={**os.environ, 'GIT_CEILING_DIRECTORIES': str(src.parent)}, check=True)
     npm = shutil.which('npm')
     subprocess.run([npm, 'ci', '--ignore-scripts'], cwd=src, check=True)
     subprocess.run([npm, 'run', 'build'], cwd=src, check=True)
@@ -141,11 +163,14 @@ def build():
     shutil.copy2(ROOT/'desktop/cli_entry.py', APP)
     for name in ('LICENSE', 'NOTICE', 'package-lock.json'): shutil.copy2(src/name, APP/name)
     csc = Path(os.environ['WINDIR'])/'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
-    result = subprocess.run([csc, '/nologo','/target:winexe','/platform:x64','/codepage:65001', '/out:OpenDirector.exe',
+    icon = '/win32icon:' + str(ROOT/'desktop/OpenDirector.ico')
+    result = subprocess.run([csc, icon, '/nologo','/target:winexe','/platform:x64','/codepage:65001', '/out:OpenDirector.exe',
                     '/r:System.Security.dll','/r:System.Windows.Forms.dll','/r:System.Drawing.dll', '/r:Microsoft.Web.WebView2.Core.dll',
-                    '/r:Microsoft.Web.WebView2.WinForms.dll', ROOT/'desktop/Host.cs',ROOT/'desktop/Updates.cs'], cwd=APP, capture_output=True, text=True)
+                    '/r:Microsoft.Web.WebView2.WinForms.dll', ROOT/'desktop/Host.cs',ROOT/'desktop/Updates.cs',WORK/'Host.AssemblyInfo.cs'], cwd=APP, capture_output=True, text=True)
     if result.returncode: raise RuntimeError(result.stdout + result.stderr)
-    subprocess.run([csc,'/nologo','/target:exe','/platform:x64','/codepage:65001','/out:OpenDirector-CLI.exe','/r:System.Security.dll',ROOT/'desktop/Cli.cs'],cwd=APP,check=True)
+    subprocess.run([csc,icon,'/nologo','/target:exe','/platform:x64','/codepage:65001','/out:OpenDirector-CLI.exe','/r:System.Security.dll',ROOT/'desktop/Cli.cs',WORK/'Cli.AssemblyInfo.cs'],cwd=APP,check=True)
+    subprocess.run([csc,icon,'/nologo','/target:winexe','/platform:x64','/codepage:65001','/out:Uninstall.exe',
+                    '/r:System.Windows.Forms.dll',ROOT/'desktop/Uninstall.cs',WORK/'Uninstall.AssemblyInfo.cs'],cwd=WORK,check=True)
     subprocess.run([python,'-I','-c','from opendirector_api.main import create_app; from opendirector.installation import web_root; assert (web_root()/"index.html").is_file()'], check=True)
     subprocess.run([bundle/'bin/opencode.exe','--version'], check=True)
     subprocess.run([APP/'media/rg.exe','--version'], check=True)

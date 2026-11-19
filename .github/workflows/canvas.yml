@@ -25,7 +25,7 @@ jobs:
           ref: ${{ steps.upstream.outputs.sha }}
           path: source
           persist-credentials: false
-      - run: git apply ../patches/canvas-placement.patch && cp ../verification/placement.test.ts tests/
+      - run: git apply ../patches/canvas-placement.patch ../patches/bundled-agent.patch && cp ../verification/placement.test.ts tests/
       - uses: actions/setup-node@v6
         with: {node-version-file: source/.nvmrc}
       - uses: actions/setup-python@v6

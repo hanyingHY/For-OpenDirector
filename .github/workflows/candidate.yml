@@ -1,7 +1,5 @@
 name: Verify existing Windows installer
 on:
-  push:
-    paths: ['delivery/candidate.json']
   workflow_dispatch:
 permissions:
   actions: read

@@ -25,6 +25,12 @@ export async function agentWindow(page, project){
   } catch(err){fixtureError=err;res.writeHead(500);res.end('Fixture expectation failed');}});
   await new Promise((ok,no)=>{server.once('error',no);server.listen(18919,'127.0.0.1',ok)});
   try{
+    const catalog=await page.evaluate(async id=>{
+      const response=await fetch(`/api/creation/projects/${id}/assistant/skills`,{headers:{'X-OpenDirector-Request':'1'}});
+      return [response.status, await response.json()];
+    },project);
+    assert.equal(catalog[0],200,JSON.stringify(catalog[1]));
+    assert(catalog[1].some(skill=>skill.source==='builtin'),'No bundled skills discovered');
     const editor=page.locator('#canvas-assistant [contenteditable="true"]').first();
     if(!await editor.isVisible())await page.locator('.cw-chat-button').click();
     await editor.fill('Save the Blue Hour plan to this project.');

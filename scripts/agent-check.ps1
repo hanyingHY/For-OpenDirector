@@ -1,3 +1,4 @@
+﻿#Requires -Version 7.0
 # Run the upstream native turn regression against the *packaged* interpreter,
 # business services, skills and executable. Model transport is deterministic.
 $ErrorActionPreference='Stop'

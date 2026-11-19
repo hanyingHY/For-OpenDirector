@@ -38,7 +38,7 @@ internal sealed class Updates : IDisposable {
     readonly ToolStripMenuItem check = new ToolStripMenuItem("检查更新 / Check now");
     readonly ToolStripMenuItem stop = new ToolStripMenuItem("取消检查或下载 / Cancel");
     readonly ToolStripMenuItem install = new ToolStripMenuItem("安装并重启 / Install and restart");
-    readonly Timer timer = new Timer { Interval = 12 * 60 * 60 * 1000 };
+    readonly Timer timer = new Timer { Interval = 60 * 60 * 1000 };
     readonly string dir = AppDomain.CurrentDomain.BaseDirectory;
     Process worker;
     string ready;
@@ -64,7 +64,7 @@ internal sealed class Updates : IDisposable {
         menu.Items.Add("退出应用 / Quit",null,(s,e)=>Quit());
         icon.DoubleClick+=(s,e)=>show();
         check.Click+=(s,e)=>Check(true); stop.Click+=(s,e)=>Cancel(); install.Click+=(s,e)=>Install();
-        icon.Icon=SystemIcons.Application; icon.Text="OpenDirector · 更新 / Updates"; icon.ContextMenuStrip=menu;
+        icon.Icon=Host.AppIcon; icon.Text="OpenDirector · 更新 / Updates"; icon.ContextMenuStrip=menu;
         icon.BalloonTipClicked+=(s,e)=>{ if(ready!=null) Install(); else show(); }; icon.Visible=true;
         timer.Tick+=(s,e)=>{if(automatic.Checked) Check(false);}; timer.Start();
         Refresh(); if(automatic.Checked) Check(false);
@@ -82,6 +82,7 @@ internal sealed class Updates : IDisposable {
         var info=new ProcessStartInfo(Path.Combine(dir,"python","python.exe"),"-I -X utf8 \""+Path.Combine(dir,"update.py")+"\""+arguments);
         info.WorkingDirectory=dir; info.UseShellExecute=false; info.CreateNoWindow=true;
         info.RedirectStandardOutput=true; info.RedirectStandardError=true;
+        info.StandardErrorEncoding=info.StandardOutputEncoding=new System.Text.UTF8Encoding(false);
         using(var p=new Process { StartInfo=info }) {
             p.Start(); worker=p;
             try {
@@ -102,16 +103,23 @@ internal sealed class Updates : IDisposable {
     }
     async void Check(bool manual) {
         if(busy || disposed) return;
-        busy=checking=true; cancelled=false; ready=null; Refresh();
+        busy=checking=true; cancelled=false; Refresh();
         try {
-            string result=await Run("",true);
+            string result=await Run(manual?" --manual":"",true);
             if(disposed || cancelled) return;
+            if(result=="SKIPPED") return;
+            if(result=="THROTTLED") {
+                if(manual) MessageBox.Show(owner,"更新服务暂时限制请求，将稍后重试。\nThe update service is rate-limiting requests. Please try later.","OpenDirector");
+                return;
+            }
             if(result=="NONE") {
+                ready=null;
                 if(manual) MessageBox.Show(owner,"没有可用的稳定版更新。\nNo newer stable release is available.","OpenDirector");
             } else {
                 if(!Regex.IsMatch(result,@"\A\d{1,6}\.\d{1,6}\.\d{1,6}-desktop\.\d{1,6}\z")) throw new IOException("Invalid updater response");
+                bool announce = ready!=result;
                 ready=result;
-                icon.ShowBalloonTip(10000,"OpenDirector " + ready,"新版已验证。准备好后从托盘安装。\nVerified update ready. Install from the tray.",ToolTipIcon.Info);
+                if(announce) icon.ShowBalloonTip(10000,"OpenDirector " + ready,"新版已验证。准备好后从托盘安装。\nVerified update ready. Install from the tray.",ToolTipIcon.Info);
             }
         } catch(Exception ex) { if(!disposed && !cancelled) Problem(ex,manual); }
         finally { checking=busy=false; if(!disposed) Refresh(); }
